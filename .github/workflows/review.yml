@@ -29,6 +29,16 @@ on:
         required: false
         type: string
         default: ""
+      reasoning-effort:
+        description: "Optional reasoning effort for providers/models that support reasoning controls."
+        required: false
+        type: string
+        default: ""
+      reasoning-exclude:
+        description: "When reasoning-effort is set, exclude hidden reasoning from the response."
+        required: false
+        type: string
+        default: "true"
       llm-timeout-ms:
         description: "LLM request timeout in milliseconds."
         required: false
@@ -121,6 +131,8 @@ jobs:
           max-diff-size: ${{ inputs.max-diff-size }}
           max-comments: ${{ inputs.max-comments }}
           max-output-tokens: ${{ inputs.max-output-tokens }}
+          reasoning-effort: ${{ inputs.reasoning-effort }}
+          reasoning-exclude: ${{ inputs.reasoning-exclude }}
           llm-timeout-ms: ${{ inputs.llm-timeout-ms }}
           llm-temperature: ${{ inputs.llm-temperature }}
           min-command-permission: ${{ inputs.min-command-permission }}

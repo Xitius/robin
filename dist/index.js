@@ -53,6 +53,7 @@ function hasRequiredPermission(permission, minimumPermission) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.MAX_LLM_TEMPERATURE = exports.DEFAULT_LLM_TEMPERATURE = exports.DEFAULT_LLM_ROUTER_RETRY_DELAY_MS = exports.DEFAULT_LLM_RETRY_DELAY_MS = exports.DEFAULT_LLM_ROUTER_COMPLETION_ATTEMPTS = exports.DEFAULT_LLM_COMPLETION_ATTEMPTS = exports.DEFAULT_LLM_ROUTER_FIRST_CHUNK_MS = exports.DEFAULT_LLM_ROUTER_TIMEOUT_MS = exports.DEFAULT_LLM_TIMEOUT_MS = void 0;
+exports.parseReasoningExclude = parseReasoningExclude;
 exports.parseLLMTimeout = parseLLMTimeout;
 exports.parseLLMTemperature = parseLLMTemperature;
 exports.DEFAULT_LLM_TIMEOUT_MS = 600000; // 10 minutes
@@ -65,6 +66,14 @@ exports.DEFAULT_LLM_ROUTER_RETRY_DELAY_MS = 3000;
 exports.DEFAULT_LLM_TEMPERATURE = 0.1; // near-deterministic reviews
 /** OpenAI-compatible upper bound; some models (e.g. Kimi) only accept 1. */
 exports.MAX_LLM_TEMPERATURE = 2;
+function parseReasoningExclude(input) {
+    const trimmed = input.trim().toLowerCase();
+    if (!trimmed || trimmed === "true")
+        return { value: true, valid: true };
+    if (trimmed === "false")
+        return { value: false, valid: true };
+    return { value: true, valid: false };
+}
 function parseLLMTimeout(input) {
     if (!input)
         return { value: exports.DEFAULT_LLM_TIMEOUT_MS, valid: true };
@@ -682,11 +691,15 @@ class LLMClient {
     routerModel;
     temperature;
     onProgress;
-    constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress) {
+    reasoningEffort;
+    reasoningExclude;
+    constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress, reasoningEffort, reasoningExclude = true) {
         this.model = model;
         this.temperature = temperature;
         this.routerModel = (0, llm_retry_1.isOpenRouterRouterModel)(model);
         this.onProgress = onProgress;
+        this.reasoningEffort = reasoningEffort?.trim() || undefined;
+        this.reasoningExclude = reasoningExclude;
         this.maxOutputTokens =
             maxOutputTokens && Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
                 ? maxOutputTokens
@@ -836,6 +849,12 @@ class LLMClient {
         }
         if (jsonResponseMode) {
             request.response_format = { type: "json_object" };
+        }
+        if (this.reasoningEffort) {
+            request.reasoning = {
+                effort: this.reasoningEffort,
+                exclude: this.reasoningExclude,
+            };
         }
         if (this.routerModel) {
             // OpenRouter extension: try other providers when the first free route 404s.
@@ -1088,6 +1107,13 @@ async function run() {
         const maxCommentsInput = core.getInput("max-comments") || "25";
         const maxOutputTokensInput = core.getInput("max-output-tokens") || "";
         const maxOutputTokens = maxOutputTokensInput ? parseInt(maxOutputTokensInput, 10) : undefined;
+        const reasoningEffortInput = core.getInput("reasoning-effort") || "";
+        const reasoningEffort = reasoningEffortInput.trim() || undefined;
+        const reasoningExcludeInput = core.getInput("reasoning-exclude") || "true";
+        const { value: reasoningExclude, valid: reasoningExcludeValid } = (0, config_1.parseReasoningExclude)(reasoningExcludeInput);
+        if (!reasoningExcludeValid) {
+            core.warning(`Invalid reasoning-exclude value "${reasoningExcludeInput}", using true`);
+        }
         const llmTimeoutMsInput = core.getInput("llm-timeout-ms") || "";
         const { value: llmTimeoutMs, valid: llmTimeoutValid } = (0, config_1.parseLLMTimeout)(llmTimeoutMsInput);
         if (!llmTimeoutValid) {
@@ -1104,6 +1130,9 @@ async function run() {
         const jsonResponseModeInput = core.getInput("use-json-response-mode") || "";
         const requestChangesInput = core.getInput("request-changes") || "";
         core.info(`Model: ${model || "(not configured)"}`);
+        if (reasoningEffort) {
+            core.info(`Reasoning effort: ${reasoningEffort} (exclude=${reasoningExclude})`);
+        }
         core.info(`Running /${command} on PR #${prNumber} in ${owner}/${repo}`);
         statusCommand = command === "summary" ? "summary" : "review";
         statusModel = model || "not configured";
@@ -1171,7 +1200,7 @@ async function run() {
             : "";
         const llm = new llm_client_1.LLMClient(baseUrl, apiKey, model, maxOutputTokens, llmTimeoutMs, undefined, llmTemperature, async (detail) => {
             await updateStatusComment(octokit, owner, repo, statusCommentId, buildProgressStatusBody(detail, statusCommand, statusModel));
-        });
+        }, reasoningEffort, reasoningExclude);
         const useJsonMode = command === "review" && jsonResponseMode;
         let reviewText;
         if (command === "summary") {

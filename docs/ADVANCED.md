@@ -113,6 +113,8 @@ Available on the [direct action](../action.yml) and the [reusable workflow](../.
 | `request-changes` | omit → `true` (defer to repo config) | `true` submits a blocking REQUEST_CHANGES review on high findings; `false` posts a non-blocking COMMENT (advisor mode). Reusable workflow input is a boolean with no default — omit it to let `.github/robin.yml` win |
 | `max-diff-size` | `50000` | Max diff characters sent to the model |
 | `max-output-tokens` | empty | Cap response tokens (optional) |
+| `reasoning-effort` | empty | Optional provider reasoning effort; empty omits reasoning configuration |
+| `reasoning-exclude` | `true` | When reasoning effort is set, request hidden reasoning be excluded; invalid values fall back to `true` |
 | `llm-timeout-ms` | `600000` | LLM timeout (10 minutes) |
 | `llm-temperature` | `0.1` | Sampling temperature (0–2). Raise only if your model rejects the default — some models accept a single fixed value (Kimi requires `1`) |
 | `max-comments` | `15` | Max inline comments |

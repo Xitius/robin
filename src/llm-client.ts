@@ -24,6 +24,10 @@ export interface ChatCompletionResult {
 
 export type LlmProgressHandler = (detail: string) => void | Promise<void>;
 
+type OpenRouterReasoningRequest = {
+  reasoning?: { effort: string; exclude: boolean };
+};
+
 export class LLMClient {
   private client: OpenAI;
   private model: string;
@@ -32,6 +36,8 @@ export class LLMClient {
   private routerModel: boolean;
   private temperature: number;
   private onProgress?: LlmProgressHandler;
+  private reasoningEffort?: string;
+  private reasoningExclude: boolean;
 
   constructor(
     baseUrl: string,
@@ -41,12 +47,16 @@ export class LLMClient {
     timeoutMs = DEFAULT_LLM_TIMEOUT_MS,
     maxAttempts = DEFAULT_LLM_COMPLETION_ATTEMPTS,
     temperature = DEFAULT_LLM_TEMPERATURE,
-    onProgress?: LlmProgressHandler
+    onProgress?: LlmProgressHandler,
+    reasoningEffort?: string,
+    reasoningExclude = true
   ) {
     this.model = model;
     this.temperature = temperature;
     this.routerModel = isOpenRouterRouterModel(model);
     this.onProgress = onProgress;
+    this.reasoningEffort = reasoningEffort?.trim() || undefined;
+    this.reasoningExclude = reasoningExclude;
     this.maxOutputTokens =
       maxOutputTokens && Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
         ? maxOutputTokens
@@ -229,8 +239,8 @@ export class LLMClient {
     systemPrompt: string,
     userContent: string,
     jsonResponseMode: boolean
-  ): OpenAI.Chat.Completions.ChatCompletionCreateParams {
-    const request: OpenAI.Chat.Completions.ChatCompletionCreateParams = {
+  ): OpenAI.Chat.Completions.ChatCompletionCreateParams & OpenRouterReasoningRequest {
+    const request: OpenAI.Chat.Completions.ChatCompletionCreateParams & OpenRouterReasoningRequest = {
       model: this.model,
       messages: [
         { role: "system", content: systemPrompt },
@@ -245,6 +255,13 @@ export class LLMClient {
 
     if (jsonResponseMode) {
       request.response_format = { type: "json_object" };
+    }
+
+    if (this.reasoningEffort) {
+      request.reasoning = {
+        effort: this.reasoningEffort,
+        exclude: this.reasoningExclude,
+      };
     }
 
     if (this.routerModel) {

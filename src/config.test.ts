@@ -3,6 +3,7 @@ import {
   DEFAULT_LLM_TIMEOUT_MS,
   parseLLMTemperature,
   parseLLMTimeout,
+  parseReasoningExclude,
 } from "./config";
 
 describe("parseLLMTimeout", () => {
@@ -103,5 +104,23 @@ describe("parseLLMTemperature", () => {
     const result = parseLLMTemperature("hot");
     expect(result.value).toBe(DEFAULT_LLM_TEMPERATURE);
     expect(result.valid).toBe(false);
+  });
+});
+
+describe("parseReasoningExclude", () => {
+  it.each([
+    ["", true],
+    ["   ", true],
+    ["true", true],
+    [" TRUE ", true],
+    ["false", false],
+    [" False ", false],
+  ])("parses %j as %j", (input, expected) => {
+    expect(parseReasoningExclude(input).value).toBe(expected);
+    expect(parseReasoningExclude(input).valid).toBe(true);
+  });
+
+  it("falls back safely for invalid values", () => {
+    expect(parseReasoningExclude("maybe")).toEqual({ value: true, valid: false });
   });
 });
