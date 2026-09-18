@@ -1793,6 +1793,24 @@ exports.DEFAULT_CONFIG_FILE = ".github/robin.yml";
 exports.DEFAULT_ACTION_MAX_DIFF_SIZE = 50000;
 /** Single default shared by action.yml and the reusable review.yml workflow. */
 exports.DEFAULT_MAX_COMMENTS = 15;
+/** Strips a trailing ` # comment` only outside quotes, so quoted values keep `#` intact. */
+function stripTrailingComment(line) {
+    let quote;
+    for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        if (quote) {
+            if (char === quote)
+                quote = undefined;
+        }
+        else if (char === '"' || char === "'") {
+            quote = char;
+        }
+        else if (char === "#" && index > 0 && /\s/.test(line[index - 1])) {
+            return line.slice(0, index).trimEnd();
+        }
+    }
+    return line;
+}
 function parseRepoConfigYaml(text) {
     const config = {};
     let inSkipPaths = false;
@@ -1816,9 +1834,8 @@ function parseRepoConfigYaml(text) {
             inSkipPaths = false;
         }
         // Scalar settings tolerate the inline comments the shipped examples use
-        // (`reasoning-effort: high   # provider note`). `#` without preceding whitespace
-        // stays part of the value, so quoted provider values keep their hashes.
-        const setting = trimmed.replace(/\s+#.*$/, "");
+        // (`reasoning-effort: high   # provider note`); a `#` inside a quoted value is kept.
+        const setting = stripTrailingComment(trimmed);
         const maxDiffMatch = setting.match(/^max-diff-size:\s*(\d+)\s*$/i);
         if (maxDiffMatch) {
             config.maxDiffSize = parseInt(maxDiffMatch[1], 10);

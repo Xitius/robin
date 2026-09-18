@@ -54,6 +54,18 @@ skip-paths:
     expect(parseRepoConfigYaml('reasoning-effort: "provider#custom"').reasoningEffort).toBe(
       "provider#custom"
     );
+    expect(parseRepoConfigYaml('reasoning-effort: "provider #custom"').reasoningEffort).toBe(
+      "provider #custom"
+    );
+    expect(
+      parseRepoConfigYaml('reasoning-effort: "provider #custom" # trailing note').reasoningEffort
+    ).toBe("provider #custom");
+  });
+
+  it("strips an inline comment containing an apostrophe", () => {
+    expect(
+      parseRepoConfigYaml("reasoning-effort: high   # provider's note").reasoningEffort
+    ).toBe("high");
   });
 });
 
