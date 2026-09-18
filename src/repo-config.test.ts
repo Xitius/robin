@@ -67,6 +67,11 @@ skip-paths:
       parseRepoConfigYaml("reasoning-effort: high   # provider's note").reasoningEffort
     ).toBe("high");
   });
+
+  it("handles escaped quotes and multi-word unquoted values", () => {
+    expect(parseRepoConfigYaml('reasoning-effort: "a\\"b" # note').reasoningEffort).toBe('a"b');
+    expect(parseRepoConfigYaml("reasoning-effort: very high").reasoningEffort).toBe("very high");
+  });
 });
 
 describe("resolveMaxDiffSize", () => {

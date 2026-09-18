@@ -18,6 +18,10 @@ function stripTrailingComment(line: string): string {
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
     if (quote) {
+      if (char === "\\") {
+        index += 1;
+        continue;
+      }
       if (char === quote) quote = undefined;
     } else if (char === '"' || char === "'") {
       quote = char;
@@ -82,10 +86,15 @@ export function parseRepoConfigYaml(text: string): RepoConfig {
     }
 
     const reasoningEffortMatch = setting.match(
-      /^reasoning-effort:\s*(?:"([^"]*)"|'([^']*)'|(\S+))\s*$/i
+      /^reasoning-effort:\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(.+))\s*$/i
     );
     if (reasoningEffortMatch) {
-      const value = (reasoningEffortMatch[1] ?? reasoningEffortMatch[2] ?? reasoningEffortMatch[3] ?? "").trim();
+      const quotedValue = reasoningEffortMatch[1] ?? reasoningEffortMatch[2];
+      const value = (
+        quotedValue !== undefined
+          ? quotedValue.replace(/\\(.)/g, "$1")
+          : reasoningEffortMatch[3] ?? ""
+      ).trim();
       if (value) {
         config.reasoningEffort = value;
       }

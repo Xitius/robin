@@ -44,6 +44,17 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+/**
+ * Explicit parameter rejections that name the extra parameter. These win over the value
+ * bail-outs so an explicit rejection is not masked by an incidental value word later in
+ * the message (for example a provider that echoes the configured value while rejecting
+ * the parameter itself).
+ */
+const EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
+  /\b(?:unsupported|unknown|unrecognized|unrecognised)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:reasoning|effort|exclude)\b/i,
+  /\b(?:does|do|did)\s+not\s+support\b[^.!?]{0,30}\b(?:reasoning|effort|exclude)\b/i,
+];
+
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */
 const UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
   /(?:unsupported|unknown|unrecognized|unrecognised|unexpected)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b/i,
@@ -52,7 +63,6 @@ const UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
   /(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:unsupported|unknown|unrecognized|unrecognised|unexpected)\b/i,
   /\b(?:reasoning|effort|exclude)(?:[\w.-]*)(?:\s+\w+){0,3}\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
   /\b(?:reasoning|effort|exclude)(?:[\w.-]*)(?:\s+\w+){0,3}\s+(?:(?:is|are|was|were)\s+)?not\s+supported\s+(?:by|for|with|in|on)\b/i,
-  /\b(?:does|do|did)\s+not\s+support\b/i,
   /\b(?:parameter|argument|field|property|option|feature)\b[^.!?]{0,30}\b(?:is|are|was|were)\s+not\s+(?:allowed|permitted|recognized|recognised)\b/i,
   /\bextra\s+(?:inputs?|fields?|properties|arguments?|parameters?)\b/i,
 ];
@@ -75,19 +85,30 @@ const INVALID_VALUE_PHRASES: RegExp[] = [
 /**
  * True only for a client validation response (400/422) that reports the reasoning
  * configuration itself as unknown, unsupported, or of the wrong shape — the cases where
- * dropping the reasoning parameter and retrying is safe. Invalid effort values, missing
- * values, and generic validation errors must surface normally: a rejection that repeats the
- * configured effort value is a value complaint, not an unknown-parameter report.
+ * dropping the reasoning parameter and retrying is safe. Explicit parameter rejections and
+ * a structured `param` naming the reasoning field win over the value bail-outs; invalid
+ * effort values, missing values, and generic validation errors must surface normally.
  */
 export function isUnsupportedReasoningEffortError(error: unknown, sentEffort?: string): boolean {
   if (!error || typeof error !== "object") return false;
   const status = Number((error as { status?: unknown }).status);
   if (status !== 400 && status !== 422) return false;
   const message = errorMessage(error);
-  if (!/\b(?:reasoning|effort|exclude)/i.test(message)) return false;
-  if (sentEffort && mentionsEffortValue(message, sentEffort)) return false;
-  if (SHAPE_MISMATCH_PHRASES.some((pattern) => pattern.test(message))) return true;
-  if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) return false;
+
+  if (EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message))) {
+    return true;
+  }
+
+  const mentionsReasoning = /\b(?:reasoning|effort|exclude)/i.test(message);
+  if (mentionsReasoning && sentEffort && mentionsEffortValue(message, sentEffort)) return false;
+  if (mentionsReasoning && SHAPE_MISMATCH_PHRASES.some((pattern) => pattern.test(message))) {
+    return true;
+  }
+  if (mentionsReasoning && INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) {
+    return false;
+  }
+  if (structuredReasoningParam(error)) return true;
+  if (!mentionsReasoning) return false;
   return UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message));
 }
 
@@ -95,6 +116,13 @@ export function isUnsupportedReasoningEffortError(error: unknown, sentEffort?: s
 function mentionsEffortValue(message: string, effort: string): boolean {
   const escaped = effort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, "i").test(message);
+}
+
+/** OpenAI-compatible SDK errors may name the offending parameter structurally. */
+function structuredReasoningParam(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const param = (error as { param?: unknown }).param;
+  return typeof param === "string" && /\b(?:reasoning|effort|exclude)/i.test(param);
 }
 
 export function isRetriableLlmError(error: unknown, context: LlmRetryContext = {}): boolean {

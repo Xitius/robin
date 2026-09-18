@@ -150,6 +150,48 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(true);
   });
 
+  it("lets an explicit parameter rejection win over value words elsewhere", () => {
+    expect(
+      isUnsupportedReasoningEffortError(
+        {
+          status: 400,
+          message: "Unsupported parameter: reasoning; valid values are low, medium, high",
+        },
+        "low"
+      )
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError(
+        { status: 400, message: "This model does not support high-effort reasoning" },
+        "high"
+      )
+    ).toBe(true);
+  });
+
+  it("uses a structured param naming the reasoning field when message text is inconclusive", () => {
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Request validation failed",
+        param: "reasoning_effort",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Invalid value for 'reasoning_effort': 'extreme'",
+        param: "reasoning_effort",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Request validation failed",
+        param: "temperature",
+      })
+    ).toBe(false);
+  });
+
   it("treats a message repeating the configured effort value as a value complaint", () => {
     const valueRejection = {
       status: 400,
@@ -202,6 +244,12 @@ describe("isUnsupportedReasoningEffortError", () => {
       isUnsupportedReasoningEffortError({
         status: 400,
         message: "temperature 2 is not supported for reasoning models",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning models do not support temperature 0.1",
       })
     ).toBe(false);
     expect(isUnsupportedReasoningEffortError(new Error("reasoning rejected"))).toBe(false);
