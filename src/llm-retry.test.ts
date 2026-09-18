@@ -181,6 +181,18 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(true);
   });
 
+  it("does not cross a comma from an unrelated rejected parameter", () => {
+    expect(
+      isUnsupportedReasoningEffortError(
+        {
+          status: 400,
+          message: "Unsupported parameter: temperature, reasoning models require temperature 1",
+        },
+        "high"
+      )
+    ).toBe(false);
+  });
+
   it("keeps a mixed invalid-value message on the value path", () => {
     const mixed = {
       status: 400,
