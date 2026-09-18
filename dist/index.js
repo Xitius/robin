@@ -53,7 +53,6 @@ function hasRequiredPermission(permission, minimumPermission) {
 
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.MAX_LLM_TEMPERATURE = exports.DEFAULT_LLM_TEMPERATURE = exports.DEFAULT_LLM_ROUTER_RETRY_DELAY_MS = exports.DEFAULT_LLM_RETRY_DELAY_MS = exports.DEFAULT_LLM_ROUTER_COMPLETION_ATTEMPTS = exports.DEFAULT_LLM_COMPLETION_ATTEMPTS = exports.DEFAULT_LLM_ROUTER_FIRST_CHUNK_MS = exports.DEFAULT_LLM_ROUTER_TIMEOUT_MS = exports.DEFAULT_LLM_TIMEOUT_MS = void 0;
-exports.parseReasoningExclude = parseReasoningExclude;
 exports.parseLLMTimeout = parseLLMTimeout;
 exports.parseLLMTemperature = parseLLMTemperature;
 exports.DEFAULT_LLM_TIMEOUT_MS = 600000; // 10 minutes
@@ -66,14 +65,6 @@ exports.DEFAULT_LLM_ROUTER_RETRY_DELAY_MS = 3000;
 exports.DEFAULT_LLM_TEMPERATURE = 0.1; // near-deterministic reviews
 /** OpenAI-compatible upper bound; some models (e.g. Kimi) only accept 1. */
 exports.MAX_LLM_TEMPERATURE = 2;
-function parseReasoningExclude(input) {
-    const trimmed = input.trim().toLowerCase();
-    if (!trimmed || trimmed === "true")
-        return { value: true, valid: true };
-    if (trimmed === "false")
-        return { value: false, valid: true };
-    return { value: true, valid: false };
-}
 function parseLLMTimeout(input) {
     if (!input)
         return { value: exports.DEFAULT_LLM_TIMEOUT_MS, valid: true };
@@ -692,14 +683,13 @@ class LLMClient {
     temperature;
     onProgress;
     reasoningEffort;
-    reasoningExclude;
-    constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress, reasoningEffort, reasoningExclude = true) {
+    reasoningFallbackActive = false;
+    constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress, reasoningEffort) {
         this.model = model;
         this.temperature = temperature;
         this.routerModel = (0, llm_retry_1.isOpenRouterRouterModel)(model);
         this.onProgress = onProgress;
         this.reasoningEffort = reasoningEffort?.trim() || undefined;
-        this.reasoningExclude = reasoningExclude;
         this.maxOutputTokens =
             maxOutputTokens && Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
                 ? maxOutputTokens
@@ -739,10 +729,7 @@ class LLMClient {
             try {
                 core.info(`LLM attempt ${attempt}/${this.maxAttempts}: waiting for provider...`);
                 await this.progress(`Waiting for provider (attempt ${attempt}/${this.maxAttempts})…`);
-                const request = this.buildRequest(systemPrompt, userContent, useJson);
-                const { content, model: resolvedModel } = this.routerModel
-                    ? await this.streamChatCompletion(request)
-                    : await this.blockingChatCompletion(request);
+                const { content, model: resolvedModel } = await this.performRequest(systemPrompt, userContent, useJson);
                 if (content) {
                     if (!this.routerModel) {
                         this.logResolvedModel(resolvedModel || this.model);
@@ -773,6 +760,32 @@ class LLMClient {
             throw new Error(`Failed to get response from LLM after ${this.maxAttempts} attempts: ${lastError}`);
         }
         throw new Error(`Empty response from LLM after ${this.maxAttempts} attempts (finish_reason=${lastFinishReason})`);
+    }
+    /**
+     * One completion request. If the provider rejects the reasoning parameter as
+     * unsupported, warn and retry once without it; the fallback then stays off so
+     * normal retry attempts are not multiplied.
+     */
+    async performRequest(systemPrompt, userContent, jsonResponseMode) {
+        try {
+            return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
+        }
+        catch (error) {
+            if (this.reasoningFallbackActive ||
+                !this.reasoningEffort ||
+                !(0, llm_retry_1.isUnsupportedReasoningEffortError)(error)) {
+                throw error;
+            }
+            this.reasoningFallbackActive = true;
+            core.warning(`Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${error}). ` +
+                "Retrying once without the reasoning parameter and continuing this run without reasoning controls.");
+            return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
+        }
+    }
+    async dispatch(request) {
+        return this.routerModel
+            ? await this.streamChatCompletion(request)
+            : await this.blockingChatCompletion(request);
     }
     async blockingChatCompletion(request) {
         const response = await this.client.chat.completions.create({
@@ -830,6 +843,10 @@ class LLMClient {
         catch (error) {
             clearStallTimer();
             if (!gotFirstChunk) {
+                // A rejected reasoning parameter is definitive, not a stalled router.
+                if ((0, llm_retry_1.isUnsupportedReasoningEffortError)(error)) {
+                    throw error;
+                }
                 throw (0, llm_retry_1.openRouterStallError)(firstChunkMs);
             }
             throw error;
@@ -850,10 +867,10 @@ class LLMClient {
         if (jsonResponseMode) {
             request.response_format = { type: "json_object" };
         }
-        if (this.reasoningEffort) {
+        if (this.reasoningEffort && !this.reasoningFallbackActive) {
             request.reasoning = {
                 effort: this.reasoningEffort,
-                exclude: this.reasoningExclude,
+                exclude: true,
             };
         }
         if (this.routerModel) {
@@ -898,6 +915,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.resolveLlmTimeoutMs = resolveLlmTimeoutMs;
 exports.isOpenRouterRouterModel = isOpenRouterRouterModel;
 exports.isOpenRouterProviderError = isOpenRouterProviderError;
+exports.isUnsupportedReasoningEffortError = isUnsupportedReasoningEffortError;
 exports.isRetriableLlmError = isRetriableLlmError;
 exports.shouldUseJsonResponseMode = shouldUseJsonResponseMode;
 exports.computeRetryDelayMs = computeRetryDelayMs;
@@ -922,6 +940,28 @@ function isOpenRouterRouterModel(model) {
 function isOpenRouterProviderError(error) {
     const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
     return message.includes("provider returned error");
+}
+function errorMessage(error) {
+    if (error instanceof Error)
+        return error.message;
+    if (typeof error === "object" &&
+        error !== null &&
+        typeof error.message === "string") {
+        return error.message;
+    }
+    return String(error);
+}
+/**
+ * True only for a client validation response (400/422) that names reasoning/effort —
+ * the one case where dropping the reasoning parameter and retrying is safe.
+ */
+function isUnsupportedReasoningEffortError(error) {
+    if (!error || typeof error !== "object")
+        return false;
+    const status = Number(error.status);
+    if (status !== 400 && status !== 422)
+        return false;
+    return /reasoning|effort/i.test(errorMessage(error));
 }
 function isRetriableLlmError(error, context = {}) {
     if (!error)
@@ -1108,12 +1148,6 @@ async function run() {
         const maxOutputTokensInput = core.getInput("max-output-tokens") || "";
         const maxOutputTokens = maxOutputTokensInput ? parseInt(maxOutputTokensInput, 10) : undefined;
         const reasoningEffortInput = core.getInput("reasoning-effort") || "";
-        const reasoningEffort = reasoningEffortInput.trim() || undefined;
-        const reasoningExcludeInput = core.getInput("reasoning-exclude") || "true";
-        const { value: reasoningExclude, valid: reasoningExcludeValid } = (0, config_1.parseReasoningExclude)(reasoningExcludeInput);
-        if (!reasoningExcludeValid) {
-            core.warning(`Invalid reasoning-exclude value "${reasoningExcludeInput}", using true`);
-        }
         const llmTimeoutMsInput = core.getInput("llm-timeout-ms") || "";
         const { value: llmTimeoutMs, valid: llmTimeoutValid } = (0, config_1.parseLLMTimeout)(llmTimeoutMsInput);
         if (!llmTimeoutValid) {
@@ -1130,9 +1164,6 @@ async function run() {
         const jsonResponseModeInput = core.getInput("use-json-response-mode") || "";
         const requestChangesInput = core.getInput("request-changes") || "";
         core.info(`Model: ${model || "(not configured)"}`);
-        if (reasoningEffort) {
-            core.info(`Reasoning effort: ${reasoningEffort} (exclude=${reasoningExclude})`);
-        }
         core.info(`Running /${command} on PR #${prNumber} in ${owner}/${repo}`);
         statusCommand = command === "summary" ? "summary" : "review";
         statusModel = model || "not configured";
@@ -1169,6 +1200,10 @@ async function run() {
         const maxComments = (0, repo_config_1.resolveMaxComments)(maxCommentsInput, repoConfig);
         const jsonResponseMode = (0, repo_config_1.resolveJsonResponseMode)(jsonResponseModeInput, repoConfig);
         const requestChanges = (0, repo_config_1.resolveRequestChanges)(requestChangesInput, repoConfig);
+        const reasoningEffort = (0, repo_config_1.resolveReasoningEffort)(reasoningEffortInput, repoConfig);
+        if (reasoningEffort) {
+            core.info(`Reasoning effort: ${reasoningEffort}`);
+        }
         const diff = await gitUtils.getPullRequestDiff(owner, repo, prNumber);
         if (!diff || diff.trim().length === 0) {
             core.warning("No diff found for this PR.");
@@ -1200,7 +1235,7 @@ async function run() {
             : "";
         const llm = new llm_client_1.LLMClient(baseUrl, apiKey, model, maxOutputTokens, llmTimeoutMs, undefined, llmTemperature, async (detail) => {
             await updateStatusComment(octokit, owner, repo, statusCommentId, buildProgressStatusBody(detail, statusCommand, statusModel));
-        }, reasoningEffort, reasoningExclude);
+        }, reasoningEffort);
         const useJsonMode = command === "review" && jsonResponseMode;
         let reviewText;
         if (command === "summary") {
@@ -1708,6 +1743,7 @@ exports.resolveMaxDiffSize = resolveMaxDiffSize;
 exports.resolveMaxComments = resolveMaxComments;
 exports.resolveJsonResponseMode = resolveJsonResponseMode;
 exports.resolveRequestChanges = resolveRequestChanges;
+exports.resolveReasoningEffort = resolveReasoningEffort;
 exports.DEFAULT_CONFIG_FILE = ".github/robin.yml";
 exports.DEFAULT_ACTION_MAX_DIFF_SIZE = 50000;
 /** Single default shared by action.yml and the reusable review.yml workflow. */
@@ -1754,6 +1790,14 @@ function parseRepoConfigYaml(text) {
             config.requestChanges = requestChangesMatch[1].toLowerCase() === "true";
             continue;
         }
+        const reasoningEffortMatch = trimmed.match(/^reasoning-effort:\s*(?:"([^"]*)"|'([^']*)'|(\S+))\s*$/i);
+        if (reasoningEffortMatch) {
+            const value = (reasoningEffortMatch[1] ?? reasoningEffortMatch[2] ?? reasoningEffortMatch[3] ?? "").trim();
+            if (value) {
+                config.reasoningEffort = value;
+            }
+            continue;
+        }
     }
     return config;
 }
@@ -1789,6 +1833,13 @@ function resolveRequestChanges(actionInput, repoConfig) {
     if (actionInput === "false")
         return false;
     return repoConfig?.requestChanges ?? true;
+}
+/** Reasoning effort is provider configuration: explicit input first, then `.github/robin.yml`, else unset. */
+function resolveReasoningEffort(actionInput, repoConfig) {
+    const trimmed = actionInput.trim();
+    if (trimmed)
+        return trimmed;
+    return repoConfig?.reasoningEffort;
 }
 //# sourceMappingURL=repo-config.js.map
 

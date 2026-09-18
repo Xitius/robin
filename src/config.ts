@@ -9,13 +9,6 @@ export const DEFAULT_LLM_TEMPERATURE = 0.1; // near-deterministic reviews
 /** OpenAI-compatible upper bound; some models (e.g. Kimi) only accept 1. */
 export const MAX_LLM_TEMPERATURE = 2;
 
-export function parseReasoningExclude(input: string): { value: boolean; valid: boolean } {
-  const trimmed = input.trim().toLowerCase();
-  if (!trimmed || trimmed === "true") return { value: true, valid: true };
-  if (trimmed === "false") return { value: false, valid: true };
-  return { value: true, valid: false };
-}
-
 export function parseLLMTimeout(input: string): { value: number; valid: boolean } {
   if (!input) return { value: DEFAULT_LLM_TIMEOUT_MS, valid: true };
   const parsed = Number(input);

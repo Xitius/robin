@@ -9,6 +9,7 @@ export interface RepoConfig {
   skipPaths?: string[];
   jsonResponseMode?: boolean;
   requestChanges?: boolean;
+  reasoningEffort?: string;
 }
 
 export function parseRepoConfigYaml(text: string): RepoConfig {
@@ -59,6 +60,17 @@ export function parseRepoConfigYaml(text: string): RepoConfig {
       config.requestChanges = requestChangesMatch[1].toLowerCase() === "true";
       continue;
     }
+
+    const reasoningEffortMatch = trimmed.match(
+      /^reasoning-effort:\s*(?:"([^"]*)"|'([^']*)'|(\S+))\s*$/i
+    );
+    if (reasoningEffortMatch) {
+      const value = (reasoningEffortMatch[1] ?? reasoningEffortMatch[2] ?? reasoningEffortMatch[3] ?? "").trim();
+      if (value) {
+        config.reasoningEffort = value;
+      }
+      continue;
+    }
   }
 
   return config;
@@ -97,4 +109,14 @@ export function resolveRequestChanges(actionInput: string, repoConfig?: RepoConf
   if (actionInput === "true") return true;
   if (actionInput === "false") return false;
   return repoConfig?.requestChanges ?? true;
+}
+
+/** Reasoning effort is provider configuration: explicit input first, then `.github/robin.yml`, else unset. */
+export function resolveReasoningEffort(
+  actionInput: string,
+  repoConfig?: RepoConfig
+): string | undefined {
+  const trimmed = actionInput.trim();
+  if (trimmed) return trimmed;
+  return repoConfig?.reasoningEffort;
 }

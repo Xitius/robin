@@ -5,6 +5,7 @@ import {
   resolveJsonResponseMode,
   resolveMaxComments,
   resolveMaxDiffSize,
+  resolveReasoningEffort,
   resolveRequestChanges,
 } from "./repo-config";
 
@@ -23,6 +24,20 @@ skip-paths:
     expect(config.maxComments).toBe(8);
     expect(config.jsonResponseMode).toBe(false);
     expect(config.skipPaths).toEqual(["**/generated/**", "vendor/**"]);
+  });
+
+  it("parses reasoning-effort as a case-preserving string", () => {
+    expect(parseRepoConfigYaml("reasoning-effort: high").reasoningEffort).toBe("high");
+    expect(parseRepoConfigYaml('reasoning-effort: "xhigh"').reasoningEffort).toBe("xhigh");
+    expect(parseRepoConfigYaml("reasoning-effort: 'medium'").reasoningEffort).toBe("medium");
+    expect(parseRepoConfigYaml("reasoning-effort: ProviderCustom").reasoningEffort).toBe(
+      "ProviderCustom"
+    );
+  });
+
+  it("leaves reasoning-effort unset when the repo config value is empty", () => {
+    expect(parseRepoConfigYaml("reasoning-effort:").reasoningEffort).toBeUndefined();
+    expect(parseRepoConfigYaml('reasoning-effort: ""').reasoningEffort).toBeUndefined();
   });
 });
 
@@ -69,5 +84,21 @@ describe("resolveRequestChanges", () => {
     expect(resolveRequestChanges("true", { requestChanges: false })).toBe(true);
     expect(resolveRequestChanges("", { requestChanges: false })).toBe(false);
     expect(resolveRequestChanges("", undefined)).toBe(true);
+  });
+});
+
+describe("resolveReasoningEffort", () => {
+  it("prefers a non-empty action input over repo config and trims it", () => {
+    expect(resolveReasoningEffort("  low ", { reasoningEffort: "high" })).toBe("low");
+  });
+
+  it("falls back to repo config when the input is empty or whitespace", () => {
+    expect(resolveReasoningEffort("", { reasoningEffort: "high" })).toBe("high");
+    expect(resolveReasoningEffort("   ", { reasoningEffort: "high" })).toBe("high");
+  });
+
+  it("stays unset when neither the input nor repo config sets it", () => {
+    expect(resolveReasoningEffort("", undefined)).toBeUndefined();
+    expect(resolveReasoningEffort("  ", {})).toBeUndefined();
   });
 });

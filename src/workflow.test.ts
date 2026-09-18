@@ -177,6 +177,22 @@ describe("reusable review workflow", () => {
     }
   });
 
+  it("exposes only reasoning-effort as a reasoning setting", () => {
+    expect(publicActionInputs().filter((name) => name.includes("reasoning"))).toEqual([
+      "reasoning-effort",
+    ]);
+    expect(actionYml).not.toContain("reasoning-exclude");
+    expect(reviewWorkflow).not.toContain("reasoning-exclude");
+  });
+
+  it("documents reasoning-effort config precedence and its unsupported-parameter fallback", () => {
+    expect(advancedDocs).toContain("### Reasoning effort (provider-dependent)");
+    expect(advancedDocs).toContain("reasoning-effort: high");
+    expect(advancedDocs).toContain(".github/robin.yml");
+    expect(advancedDocs).toContain("400/422");
+    expect(readme).toContain("reasoning-effort");
+  });
+
   it("keeps a consumer fixture that exercises every workflow_call input", () => {
     const fixtureDir = join(repoRoot, "testdata", "consumer-workflows");
     const fixtures = readdirSync(fixtureDir).filter((name) => name.endsWith(".yml"));

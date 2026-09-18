@@ -27,7 +27,6 @@ jobs:
       max-comments: "10"
       max-output-tokens: ""
       reasoning-effort: "high"
-      reasoning-exclude: "true"
       llm-timeout-ms: "600000"
       llm-temperature: "0.1"
       min-command-permission: write

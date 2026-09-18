@@ -269,7 +269,7 @@ GitHub’s servers cannot reach `localhost` on your laptop. For Ollama at home, 
 
 ## Optional: config and custom rules
 
-Copy [`.github/robin.yml.example`](.github/robin.yml.example) to `.github/robin.yml` to set `max-diff-size`, skip extra paths, and more. Details: [docs/ADVANCED.md](docs/ADVANCED.md#repository-config-file).
+Copy [`.github/robin.yml.example`](.github/robin.yml.example) to `.github/robin.yml` to set `max-diff-size`, skip extra paths, and more. The same file is the normal place to set `reasoning-effort` for providers that expose reasoning controls; leave it unset to send no reasoning configuration. Details: [docs/ADVANCED.md](docs/ADVANCED.md#repository-config-file) and [Reasoning effort](docs/ADVANCED.md#reasoning-effort-provider-dependent).
 
 Add `.github/code-reviewer.md` in your repo:
 
@@ -293,6 +293,7 @@ Add `.github/code-reviewer.md` in your repo:
 | `OpenRouter stall` / job runs 15 min with no review | Auto-router hung — action now aborts after 45s with no stream and retries | Watch Actions log for `LLM resolved model` (routing OK); pin `@v2` or `@main` for the fix |
 | `404 Provider returned error` | Normal for `openrouter/free` when one provider is down — the action retries up to 5 times; keep `LLM_MODEL=openrouter/free` |
 | `temperature` rejected / must be a fixed value | Some models accept only one temperature (Kimi requires `1`) — set `llm-temperature` in your workflow's `with:` block, see [docs/ADVANCED.md](docs/ADVANCED.md#models-that-require-a-fixed-temperature) |
+| `reasoning` parameter rejected as unsupported | Provider/model doesn't support reasoning controls — the action warns and retries once without it. Remove `reasoning-effort` from `.github/robin.yml` or the workflow `with:` block if you don't need it |
 
 More fixes: [docs/ADVANCED.md#troubleshooting](docs/ADVANCED.md#troubleshooting)
 

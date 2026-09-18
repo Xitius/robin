@@ -18,6 +18,7 @@
 - Or add `.github/workflows/robin.yml` calling `antongulin/robin/.github/workflows/review.yml@main` (or pin a release tag such as `@v2`).
 - Three secrets: `LLM_API_KEY`, `LLM_BASE_URL`, `LLM_MODEL`. Free OpenRouter: base `https://openrouter.ai/api/v1`, model `openrouter/free`.
 - Optional `llm-temperature` input (default `0.1`, range 0–2): set it in the caller workflow's `with:` block only when the provider accepts a single fixed sampling temperature — Kimi models require `1` and reject requests otherwise. Invalid values log a warning and fall back to the default.
+- Optional `reasoning-effort` setting (unset by default, provider-dependent): set it in `.github/robin.yml` as the normal per-repository location, or override it in the caller workflow's `with:` block. When unset the request contains no `reasoning` property. When set, the request includes `reasoning: { effort, exclude: true }` and hidden reasoning is never parsed. If a provider rejects the parameter as unsupported (400/422 naming reasoning/effort), Robin logs a warning and retries that completion once without it; other errors never trigger the fallback.
 
 ## Key files
 

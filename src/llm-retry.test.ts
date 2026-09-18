@@ -3,6 +3,7 @@ import {
   getLlmCompletionAttemptCount,
   isOpenRouterRouterModel,
   isRetriableLlmError,
+  isUnsupportedReasoningEffortError,
   openRouterStallError,
   resolveLlmTimeoutMs,
   shouldUseJsonResponseMode,
@@ -73,6 +74,42 @@ describe("isRetriableLlmError", () => {
     ).toBe(true);
     expect(isRetriableLlmError({ status: 404 }, { model: "openrouter/free" })).toBe(true);
     expect(isRetriableLlmError({ status: 404 }, { model: "gpt-4o" })).toBe(false);
+  });
+});
+
+describe("isUnsupportedReasoningEffortError", () => {
+  it("detects 400/422 validation errors that name reasoning or effort", () => {
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Unsupported parameter: reasoning is not supported with this model",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError(
+        Object.assign(new Error("reasoning_effort is not supported"), { status: 422 })
+      )
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({ status: 400, message: "Unknown parameter: effort" })
+    ).toBe(true);
+  });
+
+  it("ignores auth, rate-limit, server, timeout, and unrelated validation errors", () => {
+    expect(
+      isUnsupportedReasoningEffortError({ status: 401, message: "Invalid API key" })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({ status: 429, message: "reasoning rate limit" })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({ status: 500, message: "reasoning backend failed" })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({ status: 400, message: "Invalid temperature" })
+    ).toBe(false);
+    expect(isUnsupportedReasoningEffortError(new Error("reasoning rejected"))).toBe(false);
+    expect(isUnsupportedReasoningEffortError(undefined)).toBe(false);
   });
 });
 

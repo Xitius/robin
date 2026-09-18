@@ -11,6 +11,7 @@ max-diff-size: 25000
 max-comments: 10
 json-response-mode: true
 request-changes: true
+# reasoning-effort: high   # provider-dependent; omit to send no reasoning configuration
 skip-paths:
   - "**/generated/**"
 ```
@@ -21,6 +22,7 @@ skip-paths:
 | `max-comments` | Used when the workflow still passes the action default (`15`) |
 | `json-response-mode` | Used when `use-json-response-mode` is empty (action default defers to this file) |
 | `request-changes` | Used when `request-changes` input is empty. `true` (default) blocks on high findings; `false` posts advisor-only comments |
+| `reasoning-effort` | Used when the `reasoning-effort` action/workflow input is empty. Provider-dependent reasoning value; omit for no reasoning configuration |
 | `skip-paths` | Extra paths removed from the diff before the LLM call |
 
 Lockfiles (npm, yarn, pnpm, Cargo, Gemfile, poetry), `dist/`, `node_modules/`, and minified assets are always skipped automatically. If every changed file is skipped, the action posts a status comment and skips the LLM call.
@@ -113,8 +115,7 @@ Available on the [direct action](../action.yml) and the [reusable workflow](../.
 | `request-changes` | omit → `true` (defer to repo config) | `true` submits a blocking REQUEST_CHANGES review on high findings; `false` posts a non-blocking COMMENT (advisor mode). Reusable workflow input is a boolean with no default — omit it to let `.github/robin.yml` win |
 | `max-diff-size` | `50000` | Max diff characters sent to the model |
 | `max-output-tokens` | empty | Cap response tokens (optional) |
-| `reasoning-effort` | empty | Optional provider reasoning effort; empty omits reasoning configuration |
-| `reasoning-exclude` | `true` | When reasoning effort is set, request hidden reasoning be excluded; invalid values fall back to `true` |
+| `reasoning-effort` | empty (defer to repo config) | Optional provider reasoning effort, provider-dependent (for example `low`, `medium`, `high`). Empty sends no `reasoning` property |
 | `llm-timeout-ms` | `600000` | LLM timeout (10 minutes) |
 | `llm-temperature` | `0.1` | Sampling temperature (0–2). Raise only if your model rejects the default — some models accept a single fixed value (Kimi requires `1`) |
 | `max-comments` | `15` | Max inline comments |
@@ -256,6 +257,49 @@ Accepted range is 0–2. Out-of-range or non-numeric values log a warning and fa
 provider requires it. Re-running the installer preserves this and any other `with:`
 overrides in your workflow.
 
+### Reasoning effort (provider-dependent)
+
+Some providers and models accept a reasoning-effort control. Robin disables it by default:
+when `reasoning-effort` is unset or whitespace, the API request is unchanged and contains no
+`reasoning` property.
+
+Set it per repository in `.github/robin.yml` — the normal location, because reasoning is
+configuration, not a credential:
+
+```yaml
+# .github/robin.yml
+reasoning-effort: high
+```
+
+The workflow input overrides the repo config when non-empty, so consumers can scope an
+effort to a single caller:
+
+```yaml
+jobs:
+  review:
+    uses: antongulin/robin/.github/workflows/review.yml@main
+    with:
+      reasoning-effort: "high"
+    secrets:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+```
+
+Common values are `low`, `medium`, and `high`; exact names are provider-dependent (some
+providers also use `minimal`, `xhigh`, or `max`). Robin forwards the trimmed value
+unchanged. When set, the request includes `reasoning: { effort: "<value>", exclude: true }`
+— hidden reasoning is excluded from the response and never parsed; only the review text is
+used.
+
+If a provider rejects the parameter as unknown or unsupported (a 400/422 validation
+response that names reasoning/effort), Robin logs a warning and retries that completion once
+without the `reasoning` property, then keeps running without reasoning controls for the
+rest of the run. Auth, rate-limit, server, timeout, and unrelated validation errors are
+handled by the normal retry path and never trigger this fallback. Providers that do not
+support reasoning controls at all can therefore receive a configured effort harmlessly: the
+fallback logs the rejection and continues without it.
+
 ## Review flow
 
 1. PR opened, reopened, or marked ready for review → automatic review.
@@ -332,6 +376,7 @@ No daily quota from this action. Real limits:
 | `404 Provider returned error` | OpenRouter free route missed one provider | Keep `LLM_MODEL=openrouter/free` — action retries (5×) with provider fallbacks; no secret updates when models rotate |
 | `Request timed out` | Large PR or slow free model | Lower `max-diff-size` or raise `llm-timeout-ms` (router models default to 2 min per attempt) |
 | `temperature` rejected / must be 1 | Model accepts only one temperature | Set `llm-temperature` to the value the provider requires (Kimi: `1`) |
+| `reasoning` parameter rejected as unsupported | Provider/model does not support reasoning controls | The action warns and retries once without it; remove `reasoning-effort` from `.github/robin.yml` or the workflow `with:` block to avoid the fallback |
 | `Resource not accessible by integration` | Missing permissions | Add `pull-requests: write` |
 | Slash command ignored | Wrong format or permission | `/robin` or `/review` as first line; need write access |
 | `/robin` does nothing on `@v1` | Stale `v1` tag before v1.4.0 | Use `/review`, pin `@v1.4.0`+, or `@v2`; floating `v1` tracks latest `1.x` on release |

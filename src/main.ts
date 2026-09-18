@@ -10,7 +10,6 @@ import {
   DEFAULT_LLM_TIMEOUT_MS,
   parseLLMTemperature,
   parseLLMTimeout,
-  parseReasoningExclude,
 } from "./config";
 import { filterDiff, splitDiffIntoFiles } from "./diff-filter";
 import { annotateDiffWithLineNumbers } from "./diff-annotate";
@@ -21,6 +20,7 @@ import {
   resolveJsonResponseMode,
   resolveMaxComments,
   resolveMaxDiffSize,
+  resolveReasoningEffort,
   resolveRequestChanges,
 } from "./repo-config";
 import { getReviewPrompt, getSummaryPrompt, getHelpMessage } from "./prompts/review-prompts";
@@ -129,13 +129,6 @@ async function run(): Promise<void> {
     const maxOutputTokensInput = core.getInput("max-output-tokens") || "";
     const maxOutputTokens = maxOutputTokensInput ? parseInt(maxOutputTokensInput, 10) : undefined;
     const reasoningEffortInput = core.getInput("reasoning-effort") || "";
-    const reasoningEffort = reasoningEffortInput.trim() || undefined;
-    const reasoningExcludeInput = core.getInput("reasoning-exclude") || "true";
-    const { value: reasoningExclude, valid: reasoningExcludeValid } =
-      parseReasoningExclude(reasoningExcludeInput);
-    if (!reasoningExcludeValid) {
-      core.warning(`Invalid reasoning-exclude value "${reasoningExcludeInput}", using true`);
-    }
     const llmTimeoutMsInput = core.getInput("llm-timeout-ms") || "";
     const { value: llmTimeoutMs, valid: llmTimeoutValid } = parseLLMTimeout(llmTimeoutMsInput);
     if (!llmTimeoutValid) {
@@ -156,9 +149,6 @@ async function run(): Promise<void> {
     const requestChangesInput = core.getInput("request-changes") || "";
 
     core.info(`Model: ${model || "(not configured)"}`);
-    if (reasoningEffort) {
-      core.info(`Reasoning effort: ${reasoningEffort} (exclude=${reasoningExclude})`);
-    }
 
     core.info(`Running /${command} on PR #${prNumber} in ${owner}/${repo}`);
     statusCommand = command === "summary" ? "summary" : "review";
@@ -212,6 +202,10 @@ async function run(): Promise<void> {
     const maxComments = resolveMaxComments(maxCommentsInput, repoConfig);
     const jsonResponseMode = resolveJsonResponseMode(jsonResponseModeInput, repoConfig);
     const requestChanges = resolveRequestChanges(requestChangesInput, repoConfig);
+    const reasoningEffort = resolveReasoningEffort(reasoningEffortInput, repoConfig);
+    if (reasoningEffort) {
+      core.info(`Reasoning effort: ${reasoningEffort}`);
+    }
 
     const diff = await gitUtils.getPullRequestDiff(owner, repo, prNumber);
     
@@ -295,8 +289,7 @@ async function run(): Promise<void> {
           buildProgressStatusBody(detail, statusCommand, statusModel)
         );
       },
-      reasoningEffort,
-      reasoningExclude
+      reasoningEffort
     );
     const useJsonMode = command === "review" && jsonResponseMode;
     

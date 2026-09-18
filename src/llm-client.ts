@@ -11,6 +11,7 @@ import {
   getLlmCompletionAttemptCount,
   isOpenRouterRouterModel,
   isRetriableLlmError,
+  isUnsupportedReasoningEffortError,
   openRouterStallError,
   resolveLlmTimeoutMs,
   shouldUseJsonResponseMode,
@@ -37,7 +38,7 @@ export class LLMClient {
   private temperature: number;
   private onProgress?: LlmProgressHandler;
   private reasoningEffort?: string;
-  private reasoningExclude: boolean;
+  private reasoningFallbackActive = false;
 
   constructor(
     baseUrl: string,
@@ -48,15 +49,13 @@ export class LLMClient {
     maxAttempts = DEFAULT_LLM_COMPLETION_ATTEMPTS,
     temperature = DEFAULT_LLM_TEMPERATURE,
     onProgress?: LlmProgressHandler,
-    reasoningEffort?: string,
-    reasoningExclude = true
+    reasoningEffort?: string
   ) {
     this.model = model;
     this.temperature = temperature;
     this.routerModel = isOpenRouterRouterModel(model);
     this.onProgress = onProgress;
     this.reasoningEffort = reasoningEffort?.trim() || undefined;
-    this.reasoningExclude = reasoningExclude;
     this.maxOutputTokens =
       maxOutputTokens && Number.isFinite(maxOutputTokens) && maxOutputTokens > 0
         ? maxOutputTokens
@@ -112,10 +111,11 @@ export class LLMClient {
         await this.progress(
           `Waiting for provider (attempt ${attempt}/${this.maxAttempts})…`
         );
-        const request = this.buildRequest(systemPrompt, userContent, useJson);
-        const { content, model: resolvedModel } = this.routerModel
-          ? await this.streamChatCompletion(request)
-          : await this.blockingChatCompletion(request);
+        const { content, model: resolvedModel } = await this.performRequest(
+          systemPrompt,
+          userContent,
+          useJson
+        );
 
         if (content) {
           if (!this.routerModel) {
@@ -159,6 +159,43 @@ export class LLMClient {
     throw new Error(
       `Empty response from LLM after ${this.maxAttempts} attempts (finish_reason=${lastFinishReason})`
     );
+  }
+
+  /**
+   * One completion request. If the provider rejects the reasoning parameter as
+   * unsupported, warn and retry once without it; the fallback then stays off so
+   * normal retry attempts are not multiplied.
+   */
+  private async performRequest(
+    systemPrompt: string,
+    userContent: string,
+    jsonResponseMode: boolean
+  ): Promise<ChatCompletionResult> {
+    try {
+      return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
+    } catch (error) {
+      if (
+        this.reasoningFallbackActive ||
+        !this.reasoningEffort ||
+        !isUnsupportedReasoningEffortError(error)
+      ) {
+        throw error;
+      }
+      this.reasoningFallbackActive = true;
+      core.warning(
+        `Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${error}). ` +
+          "Retrying once without the reasoning parameter and continuing this run without reasoning controls."
+      );
+      return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
+    }
+  }
+
+  private async dispatch(
+    request: OpenAI.Chat.Completions.ChatCompletionCreateParams & OpenRouterReasoningRequest
+  ): Promise<ChatCompletionResult> {
+    return this.routerModel
+      ? await this.streamChatCompletion(request)
+      : await this.blockingChatCompletion(request);
   }
 
   private async blockingChatCompletion(
@@ -229,6 +266,10 @@ export class LLMClient {
     } catch (error) {
       clearStallTimer();
       if (!gotFirstChunk) {
+        // A rejected reasoning parameter is definitive, not a stalled router.
+        if (isUnsupportedReasoningEffortError(error)) {
+          throw error;
+        }
         throw openRouterStallError(firstChunkMs);
       }
       throw error;
@@ -257,10 +298,10 @@ export class LLMClient {
       request.response_format = { type: "json_object" };
     }
 
-    if (this.reasoningEffort) {
+    if (this.reasoningEffort && !this.reasoningFallbackActive) {
       request.reasoning = {
         effort: this.reasoningEffort,
-        exclude: this.reasoningExclude,
+        exclude: true,
       };
     }
 

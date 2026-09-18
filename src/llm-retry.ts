@@ -32,6 +32,29 @@ export function isOpenRouterProviderError(error: unknown): boolean {
   return message.includes("provider returned error");
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return String(error);
+}
+
+/**
+ * True only for a client validation response (400/422) that names reasoning/effort —
+ * the one case where dropping the reasoning parameter and retrying is safe.
+ */
+export function isUnsupportedReasoningEffortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = Number((error as { status?: unknown }).status);
+  if (status !== 400 && status !== 422) return false;
+  return /reasoning|effort/i.test(errorMessage(error));
+}
+
 export function isRetriableLlmError(error: unknown, context: LlmRetryContext = {}): boolean {
   if (!error) return false;
 
