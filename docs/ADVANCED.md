@@ -292,13 +292,15 @@ unchanged. When set, the request includes `reasoning: { effort: "<value>", exclu
 — hidden reasoning is excluded from the response and never parsed; only the review text is
 used.
 
-If a provider rejects the parameter as unknown or unsupported (a 400/422 validation
-response that names reasoning/effort), Robin logs a warning and retries that completion once
-without the `reasoning` property, then keeps running without reasoning controls for the
-rest of the run. Auth, rate-limit, server, timeout, and unrelated validation errors are
-handled by the normal retry path and never trigger this fallback. Providers that do not
-support reasoning controls at all can therefore receive a configured effort harmlessly: the
-fallback logs the rejection and continues without it.
+If a provider rejects the parameter itself as unknown or unsupported (a 400/422 validation
+response such as `Unsupported parameter: reasoning`), Robin logs a warning and retries that
+completion once without the `reasoning` property, then keeps running without reasoning
+controls for the rest of the run. Auth, rate-limit, server, timeout, and unrelated
+validation errors are handled by the normal retry path and never trigger this fallback, and
+an invalid configured value (for example `reasoning effort must be one of low, medium,
+high`) fails normally instead of being masked by the fallback. Providers that do not support
+reasoning controls at all can therefore receive a configured effort harmlessly: the fallback
+logs the rejection and continues without it.
 
 ## Review flow
 

@@ -44,15 +44,41 @@ function errorMessage(error: unknown): string {
   return String(error);
 }
 
+/** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */
+const UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
+  /(?:unsupported|unknown|unrecognized|unrecognised|unexpected)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b/i,
+  /(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:unsupported|unknown|unrecognized|unrecognised|unexpected)\b/i,
+  /\b(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
+  /\bnot\s+supported\s+(?:by|for|with|in|on)\b/i,
+  /\b(?:does|do|did)\s+not\s+support\b/i,
+  /\b(?:parameter|argument|field|property|option|feature)\b[^.!?]{0,30}\b(?:is|are|was|were)\s+not\s+(?:allowed|permitted|recognized|recognised)\b/i,
+  /\bextra\s+(?:inputs?|fields?|properties|arguments?|parameters?)\b/i,
+];
+
+/** Malformed-value signals: these must keep failing rather than mask a configuration typo. */
+const INVALID_VALUE_PHRASES: RegExp[] = [
+  /\binvalid\s+(?:value|type|format)\b/i,
+  /\b(?:must|should|needs?\s+to)\s+be\s+(?:one\s+of|between|greater|less|at\s+most|at\s+least|a|an)\b/i,
+  /\b(?:expected|not)\s+one\s+of\b/i,
+  /\bout\s+of\s+range\b/i,
+  /\b(?:valid|allowed)\s+values?\s+(?:are|is)\b/i,
+  /\bnot\s+a\s+valid\b/i,
+];
+
 /**
- * True only for a client validation response (400/422) that names reasoning/effort —
- * the one case where dropping the reasoning parameter and retrying is safe.
+ * True only for a client validation response (400/422) that reports the reasoning/effort
+ * parameter itself as unknown or unsupported — the one case where dropping the reasoning
+ * parameter and retrying is safe. Invalid effort values, missing values, and generic
+ * validation errors must surface normally.
  */
 export function isUnsupportedReasoningEffortError(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const status = Number((error as { status?: unknown }).status);
   if (status !== 400 && status !== 422) return false;
-  return /reasoning|effort/i.test(errorMessage(error));
+  const message = errorMessage(error);
+  if (!/\b(?:reasoning|effort)/i.test(message)) return false;
+  if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) return false;
+  return UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message));
 }
 
 export function isRetriableLlmError(error: unknown, context: LlmRetryContext = {}): boolean {

@@ -78,11 +78,11 @@ describe("isRetriableLlmError", () => {
 });
 
 describe("isUnsupportedReasoningEffortError", () => {
-  it("detects 400/422 validation errors that name reasoning or effort", () => {
+  it("detects 400/422 responses that report the reasoning/effort parameter as unknown", () => {
     expect(
       isUnsupportedReasoningEffortError({
         status: 400,
-        message: "Unsupported parameter: reasoning is not supported with this model",
+        message: "Unsupported parameter: 'reasoning' is not supported with this model",
       })
     ).toBe(true);
     expect(
@@ -92,6 +92,30 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(true);
     expect(
       isUnsupportedReasoningEffortError({ status: 400, message: "Unknown parameter: effort" })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Unrecognized request argument supplied: reasoning",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "This model does not support reasoning",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "The reasoning parameter is not allowed for this model",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 422,
+        message: "reasoning: Extra inputs are not permitted",
+      })
     ).toBe(true);
   });
 
@@ -110,6 +134,51 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(false);
     expect(isUnsupportedReasoningEffortError(new Error("reasoning rejected"))).toBe(false);
     expect(isUnsupportedReasoningEffortError(undefined)).toBe(false);
+  });
+
+  it("does not treat invalid, out-of-range, or missing reasoning values as unsupported", () => {
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning effort must be one of low, medium, high",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 422,
+        message: "reasoning_effort: invalid value; expected one of low, medium, high",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Invalid value for 'reasoning_effort': 'extreme' is not one of [low, medium, high]",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning_effort 'extreme' is not allowed; use low, medium, or high",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning effort out of range: allowed values are low, medium, high",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Missing required parameter: reasoning_effort",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning effort is required",
+      })
+    ).toBe(false);
   });
 });
 

@@ -231,6 +231,35 @@ describe("LLMClient reasoning fallback", () => {
     expect(fallbackWarnings()).toHaveLength(0);
   });
 
+  it("does not fall back on an invalid reasoning effort value", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "model",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "extreme",
+    );
+    const create = stubOpenAI(client);
+    create.mockRejectedValue(
+      Object.assign(new Error("reasoning effort must be one of low, medium, high"), {
+        status: 400,
+      }),
+    );
+
+    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
+      "Failed to get response from LLM",
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(create.mock.calls[0][0]).toMatchObject({
+      reasoning: { effort: "extreme", exclude: true },
+    });
+    expect(fallbackWarnings()).toHaveLength(0);
+  });
+
   it("does not fall back on server errors", async () => {
     const client = new LLMClient(
       "https://example.test/v1",
