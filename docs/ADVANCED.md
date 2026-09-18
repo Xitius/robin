@@ -290,7 +290,9 @@ Common values are `low`, `medium`, and `high`; exact names are provider-dependen
 providers also use `minimal`, `xhigh`, or `max`). Robin forwards the trimmed value
 unchanged. When set, the request includes `reasoning: { effort: "<value>", exclude: true }`
 — hidden reasoning is excluded from the response and never parsed; only the review text is
-used.
+used. This is the OpenRouter-style request shape; providers that expect a different native
+parameter (for example OpenAI-native `reasoning_effort`) reject it, and the fallback below
+then runs the review without reasoning controls.
 
 If a provider rejects the parameter itself as unknown or unsupported (a 400/422 validation
 response such as `Unsupported parameter: reasoning`), Robin logs a warning and retries that

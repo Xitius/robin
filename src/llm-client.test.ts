@@ -331,6 +331,36 @@ describe("LLMClient reasoning fallback", () => {
     expect(fallbackWarnings()).toHaveLength(1);
   });
 
+  it("keeps reasoning off for the outer retry after a failed fallback", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "model",
+      undefined,
+      undefined,
+      2,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create
+      .mockRejectedValueOnce(reasoningRejection())
+      .mockRejectedValueOnce(Object.assign(new Error("backend unavailable"), { status: 500 }))
+      .mockResolvedValueOnce(completionResponse("review text"));
+
+    const result = await client.chatCompletion("system", "user");
+
+    expect(result.content).toBe("review text");
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(create.mock.calls[0][0]).toMatchObject({
+      reasoning: { effort: "high", exclude: true },
+    });
+    expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
+    expect(create.mock.calls[2][0]).not.toHaveProperty("reasoning");
+    expect(fallbackWarnings()).toHaveLength(1);
+  });
+
   it("does not fall back on server errors", async () => {
     const client = new LLMClient(
       "https://example.test/v1",

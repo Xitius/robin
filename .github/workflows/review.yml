@@ -30,7 +30,7 @@ on:
         type: string
         default: ""
       reasoning-effort:
-        description: "Optional reasoning effort for providers/models that support reasoning controls; empty defers to .github/robin.yml or omits reasoning configuration."
+        description: "Optional reasoning effort using the OpenRouter-style reasoning object; empty defers to .github/robin.yml or omits reasoning configuration."
         required: false
         type: string
         default: ""

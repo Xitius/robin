@@ -844,8 +844,11 @@ class LLMClient {
         catch (error) {
             clearStallTimer();
             if (!gotFirstChunk) {
-                // A rejected reasoning parameter is definitive, not a stalled router.
-                if ((0, llm_retry_1.isUnsupportedReasoningEffortError)(error, this.reasoningEffort)) {
+                // A rejected reasoning parameter is definitive, not a stalled router — but only
+                // when this request actually carried one; otherwise keep the stall retry path.
+                if (this.reasoningEffort &&
+                    !this.reasoningFallbackActive &&
+                    (0, llm_retry_1.isUnsupportedReasoningEffortError)(error, this.reasoningEffort)) {
                     throw error;
                 }
                 throw (0, llm_retry_1.openRouterStallError)(firstChunkMs);
