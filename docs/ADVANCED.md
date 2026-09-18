@@ -300,9 +300,10 @@ completion once without the `reasoning` property, then keeps running without rea
 controls for the rest of the run. Auth, rate-limit, server, timeout, and unrelated
 validation errors are handled by the normal retry path and never trigger this fallback, and
 an invalid configured value (for example `reasoning effort must be one of low, medium,
-high`) fails normally instead of being masked by the fallback. Providers that do not support
-reasoning controls at all can therefore receive a configured effort harmlessly: the fallback
-logs the rejection and continues without it.
+high`) fails normally instead of being masked by the fallback, including rejections phrased
+as a complaint about the value itself (`reasoning effort 'extreme' is not supported`).
+Providers that do not support reasoning controls at all can therefore receive a configured
+effort harmlessly: the fallback logs the rejection and continues without it.
 
 ## Review flow
 

@@ -32,7 +32,7 @@ export function isOpenRouterProviderError(error: unknown): boolean {
   return message.includes("provider returned error");
 }
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (
     typeof error === "object" &&
@@ -53,6 +53,8 @@ function errorMessage(error: unknown): string {
 const EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
   /\b(?:unsupported|unknown|unrecognized|unrecognised)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:reasoning|effort|exclude)\b/i,
   /\b(?:does|do|did)\s+not\s+support\b[^.!?]{0,30}\b(?:reasoning|effort|exclude)\b/i,
+  // The parameter itself is the subject: a value echo later in the message is incidental.
+  /\b(?:reasoning|effort|exclude)(?:[\w.-]*)\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
 ];
 
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */

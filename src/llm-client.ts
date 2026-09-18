@@ -8,6 +8,7 @@ import {
 import {
   computeRetryDelayMs,
   delayMs,
+  errorMessage,
   getLlmCompletionAttemptCount,
   isOpenRouterRouterModel,
   isRetriableLlmError,
@@ -183,7 +184,7 @@ export class LLMClient {
       }
       this.reasoningFallbackActive = true;
       core.warning(
-        `Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${error}). ` +
+        `Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${errorMessage(error)}). ` +
           "Retrying once without the reasoning parameter and continuing this run without reasoning controls."
       );
       await this.progress("Provider rejected reasoning controls — retrying without them…");

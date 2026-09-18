@@ -166,6 +166,12 @@ describe("isUnsupportedReasoningEffortError", () => {
         "high"
       )
     ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError(
+        { status: 400, message: "reasoning is not supported with this model for effort high" },
+        "high"
+      )
+    ).toBe(true);
   });
 
   it("uses a structured param naming the reasoning field when message text is inconclusive", () => {

@@ -434,6 +434,35 @@ describe("LLMClient reasoning fallback", () => {
     expect(fallbackWarnings()).toHaveLength(1);
   });
 
+  it("logs the provider message for plain-object rejections", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "model",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create
+      .mockRejectedValueOnce({
+        status: 400,
+        message: "Unsupported parameter: reasoning is not supported",
+      })
+      .mockResolvedValueOnce(completionResponse("review text"));
+
+    const result = await client.chatCompletion("system", "user");
+
+    expect(result.content).toBe("review text");
+    const warnings = fallbackWarnings();
+    expect(warnings).toHaveLength(1);
+    expect(String(warnings[0][0])).toContain("Unsupported parameter: reasoning is not supported");
+    expect(String(warnings[0][0])).not.toContain("[object Object]");
+  });
+
   it("keeps the stall retry path after a fallback when a reasoning-flavored 400 arrives", async () => {
     const client = new LLMClient(
       "https://example.test/v1",

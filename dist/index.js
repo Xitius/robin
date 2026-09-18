@@ -777,7 +777,7 @@ class LLMClient {
                 throw error;
             }
             this.reasoningFallbackActive = true;
-            core.warning(`Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${error}). ` +
+            core.warning(`Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${(0, llm_retry_1.errorMessage)(error)}). ` +
                 "Retrying once without the reasoning parameter and continuing this run without reasoning controls.");
             await this.progress("Provider rejected reasoning controls — retrying without them…");
             return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
@@ -918,6 +918,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.resolveLlmTimeoutMs = resolveLlmTimeoutMs;
 exports.isOpenRouterRouterModel = isOpenRouterRouterModel;
 exports.isOpenRouterProviderError = isOpenRouterProviderError;
+exports.errorMessage = errorMessage;
 exports.isUnsupportedReasoningEffortError = isUnsupportedReasoningEffortError;
 exports.isRetriableLlmError = isRetriableLlmError;
 exports.shouldUseJsonResponseMode = shouldUseJsonResponseMode;
@@ -963,6 +964,8 @@ function errorMessage(error) {
 const EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES = [
     /\b(?:unsupported|unknown|unrecognized|unrecognised)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:reasoning|effort|exclude)\b/i,
     /\b(?:does|do|did)\s+not\s+support\b[^.!?]{0,30}\b(?:reasoning|effort|exclude)\b/i,
+    // The parameter itself is the subject: a value echo later in the message is incidental.
+    /\b(?:reasoning|effort|exclude)(?:[\w.-]*)\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
 ];
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */
 const UNSUPPORTED_PARAMETER_PHRASES = [
