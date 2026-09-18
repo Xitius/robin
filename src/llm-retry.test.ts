@@ -172,6 +172,36 @@ describe("isUnsupportedReasoningEffortError", () => {
         "high"
       )
     ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning is not one of the supported parameters",
+      })
+    ).toBe(true);
+  });
+
+  it("keeps a mixed invalid-value message on the value path", () => {
+    const mixed = {
+      status: 400,
+      message: "Unsupported value for parameter reasoning: must be one of low, medium, high",
+    };
+    expect(isUnsupportedReasoningEffortError(mixed, "extreme")).toBe(false);
+    expect(isUnsupportedReasoningEffortError(mixed, "low")).toBe(false);
+  });
+
+  it("matches explicit parameter rejections with underscored and hyphenated names", () => {
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Unsupported parameter: reasoning_effort",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 422,
+        message: "reasoning-effort is not supported",
+      })
+    ).toBe(true);
   });
 
   it("uses a structured param naming the reasoning field when message text is inconclusive", () => {
