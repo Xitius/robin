@@ -108,6 +108,18 @@ describe("isUnsupportedReasoningEffortError", () => {
     expect(
       isUnsupportedReasoningEffortError({
         status: 400,
+        message: "The reasoning effort control is not supported for this model",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning not supported by this model",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
         message: "The reasoning parameter is not allowed for this model",
       })
     ).toBe(true);
@@ -179,6 +191,18 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(false);
     expect(
       isUnsupportedReasoningEffortError({ status: 400, message: "Invalid temperature" })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "temperature 2 is not supported; reasoning models require 1",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "temperature 2 is not supported for reasoning models",
+      })
     ).toBe(false);
     expect(isUnsupportedReasoningEffortError(new Error("reasoning rejected"))).toBe(false);
     expect(isUnsupportedReasoningEffortError(undefined)).toBe(false);

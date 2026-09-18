@@ -39,6 +39,22 @@ skip-paths:
     expect(parseRepoConfigYaml("reasoning-effort:").reasoningEffort).toBeUndefined();
     expect(parseRepoConfigYaml('reasoning-effort: ""').reasoningEffort).toBeUndefined();
   });
+
+  it("tolerates the inline comments the shipped examples use", () => {
+    expect(
+      parseRepoConfigYaml("reasoning-effort: high   # provider-dependent; unset sends none")
+        .reasoningEffort
+    ).toBe("high");
+    expect(
+      parseRepoConfigYaml("request-changes: false # advisor mode").requestChanges
+    ).toBe(false);
+  });
+
+  it("keeps a hash that is part of a quoted value", () => {
+    expect(parseRepoConfigYaml('reasoning-effort: "provider#custom"').reasoningEffort).toBe(
+      "provider#custom"
+    );
+  });
 });
 
 describe("resolveMaxDiffSize", () => {

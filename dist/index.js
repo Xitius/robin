@@ -960,8 +960,8 @@ const UNSUPPORTED_PARAMETER_PHRASES = [
     /\bunknown\s+name\b/i,
     /\bcannot\s+(?:bind|find)\s+(?:the\s+)?(?:field|property|parameter)\b/i,
     /(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:unsupported|unknown|unrecognized|unrecognised|unexpected)\b/i,
-    /\b(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
-    /\bnot\s+supported\s+(?:by|for|with|in|on)\b/i,
+    /\b(?:reasoning|effort|exclude)(?:[\w.-]*)(?:\s+\w+){0,3}\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
+    /\b(?:reasoning|effort|exclude)(?:[\w.-]*)(?:\s+\w+){0,3}\s+(?:(?:is|are|was|were)\s+)?not\s+supported\s+(?:by|for|with|in|on)\b/i,
     /\b(?:does|do|did)\s+not\s+support\b/i,
     /\b(?:parameter|argument|field|property|option|feature)\b[^.!?]{0,30}\b(?:is|are|was|were)\s+not\s+(?:allowed|permitted|recognized|recognised)\b/i,
     /\bextra\s+(?:inputs?|fields?|properties|arguments?|parameters?)\b/i,
@@ -1815,27 +1815,31 @@ function parseRepoConfigYaml(text) {
             }
             inSkipPaths = false;
         }
-        const maxDiffMatch = trimmed.match(/^max-diff-size:\s*(\d+)\s*$/i);
+        // Scalar settings tolerate the inline comments the shipped examples use
+        // (`reasoning-effort: high   # provider note`). `#` without preceding whitespace
+        // stays part of the value, so quoted provider values keep their hashes.
+        const setting = trimmed.replace(/\s+#.*$/, "");
+        const maxDiffMatch = setting.match(/^max-diff-size:\s*(\d+)\s*$/i);
         if (maxDiffMatch) {
             config.maxDiffSize = parseInt(maxDiffMatch[1], 10);
             continue;
         }
-        const maxCommentsMatch = trimmed.match(/^max-comments:\s*(\d+)\s*$/i);
+        const maxCommentsMatch = setting.match(/^max-comments:\s*(\d+)\s*$/i);
         if (maxCommentsMatch) {
             config.maxComments = parseInt(maxCommentsMatch[1], 10);
             continue;
         }
-        const jsonModeMatch = trimmed.match(/^json-response-mode:\s*(true|false)\s*$/i);
+        const jsonModeMatch = setting.match(/^json-response-mode:\s*(true|false)\s*$/i);
         if (jsonModeMatch) {
             config.jsonResponseMode = jsonModeMatch[1].toLowerCase() === "true";
             continue;
         }
-        const requestChangesMatch = trimmed.match(/^request-changes:\s*(true|false)\s*$/i);
+        const requestChangesMatch = setting.match(/^request-changes:\s*(true|false)\s*$/i);
         if (requestChangesMatch) {
             config.requestChanges = requestChangesMatch[1].toLowerCase() === "true";
             continue;
         }
-        const reasoningEffortMatch = trimmed.match(/^reasoning-effort:\s*(?:"([^"]*)"|'([^']*)'|(\S+))\s*$/i);
+        const reasoningEffortMatch = setting.match(/^reasoning-effort:\s*(?:"([^"]*)"|'([^']*)'|(\S+))\s*$/i);
         if (reasoningEffortMatch) {
             const value = (reasoningEffortMatch[1] ?? reasoningEffortMatch[2] ?? reasoningEffortMatch[3] ?? "").trim();
             if (value) {
