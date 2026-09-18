@@ -268,11 +268,17 @@ export class LLMClient {
     } catch (error) {
       clearStallTimer();
       if (!gotFirstChunk) {
-        // A rejected reasoning parameter is definitive, not a stalled router — but only
-        // when this request actually carried one; otherwise keep the stall retry path.
+        // A client validation error on a request that carried reasoning is definitive, not
+        // a stalled router: surface it so performRequest can fall back or propagate it.
+        // Unrelated and non-validation failures keep the stall retry path.
+        const status = Number((error as { status?: unknown })?.status);
+        const mentionsReasoning = /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i.test(
+          errorMessage(error)
+        );
         if (
           request.reasoning !== undefined &&
-          isUnsupportedReasoningEffortError(error, request.reasoning.effort)
+          (isUnsupportedReasoningEffortError(error, request.reasoning.effort) ||
+            ((status === 400 || status === 422) && mentionsReasoning))
         ) {
           throw error;
         }

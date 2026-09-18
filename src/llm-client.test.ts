@@ -463,6 +463,32 @@ describe("LLMClient reasoning fallback", () => {
     expect(String(warnings[0][0])).not.toContain("[object Object]");
   });
 
+  it("surfaces an unrecognized reasoning rejection on the streaming router path", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "openrouter/free",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create.mockRejectedValue(
+      Object.assign(new Error("reasoning controls rejected by the selected provider"), {
+        status: 422,
+      }),
+    );
+
+    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
+      "reasoning controls rejected by the selected provider",
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fallbackWarnings()).toHaveLength(0);
+  });
+
   it("keeps the stall retry path after a fallback when a reasoning-flavored 400 arrives", async () => {
     const client = new LLMClient(
       "https://example.test/v1",

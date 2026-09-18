@@ -5,7 +5,7 @@ max-diff-size: 25000
 max-comments: 10
 json-response-mode: true
 # request-changes: true   # default; set false for advisor mode (never block the PR, even on high findings)
-# reasoning-effort: high   # provider-dependent; unset sends no reasoning configuration, hidden reasoning stays excluded
+# reasoning-effort: high   # provider-dependent; when set sends reasoning: { effort: <value>, exclude: true }; unset sends no reasoning configuration
 
 skip-paths:
   - "**/generated/**"
