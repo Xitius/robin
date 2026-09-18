@@ -177,7 +177,7 @@ export class LLMClient {
       if (
         this.reasoningFallbackActive ||
         !this.reasoningEffort ||
-        !isUnsupportedReasoningEffortError(error)
+        !isUnsupportedReasoningEffortError(error, this.reasoningEffort)
       ) {
         throw error;
       }
@@ -186,6 +186,7 @@ export class LLMClient {
         `Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${error}). ` +
           "Retrying once without the reasoning parameter and continuing this run without reasoning controls."
       );
+      await this.progress("Provider rejected reasoning controls — retrying without them…");
       return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
     }
   }
@@ -267,7 +268,7 @@ export class LLMClient {
       clearStallTimer();
       if (!gotFirstChunk) {
         // A rejected reasoning parameter is definitive, not a stalled router.
-        if (isUnsupportedReasoningEffortError(error)) {
+        if (isUnsupportedReasoningEffortError(error, this.reasoningEffort)) {
           throw error;
         }
         throw openRouterStallError(firstChunkMs);

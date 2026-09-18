@@ -119,6 +119,35 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(true);
   });
 
+  it("treats a message repeating the configured effort value as a value complaint", () => {
+    const valueRejection = {
+      status: 400,
+      message: "reasoning effort 'extreme' is not supported by this model",
+    };
+    expect(isUnsupportedReasoningEffortError(valueRejection, "extreme")).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError(
+        { status: 400, message: "reasoning is not supported with this model" },
+        "extreme"
+      )
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError(
+        { status: 400, message: "Unsupported parameter: reasoning; follow the docs" },
+        "low"
+      )
+    ).toBe(true);
+  });
+
+  it("detects a rejected exclude sub-key of the reasoning request", () => {
+    expect(
+      isUnsupportedReasoningEffortError({ status: 400, message: "Unsupported parameter: exclude" })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({ status: 400, message: "Invalid API key" })
+    ).toBe(false);
+  });
+
   it("ignores auth, rate-limit, server, timeout, and unrelated validation errors", () => {
     expect(
       isUnsupportedReasoningEffortError({ status: 401, message: "Invalid API key" })

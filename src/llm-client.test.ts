@@ -260,6 +260,77 @@ describe("LLMClient reasoning fallback", () => {
     expect(fallbackWarnings()).toHaveLength(0);
   });
 
+  it("does not fall back when the rejection repeats the configured value", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "model",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "extreme",
+    );
+    const create = stubOpenAI(client);
+    create.mockRejectedValue(
+      reasoningRejection(400, "reasoning effort 'extreme' is not supported by this model"),
+    );
+
+    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
+      "Failed to get response from LLM",
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fallbackWarnings()).toHaveLength(0);
+  });
+
+  it("falls back when the provider rejects the exclude sub-key", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "model",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create
+      .mockRejectedValueOnce(reasoningRejection(400, "Unsupported parameter: exclude"))
+      .mockResolvedValueOnce(completionResponse("review text"));
+
+    const result = await client.chatCompletion("system", "user");
+
+    expect(result.content).toBe("review text");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
+    expect(fallbackWarnings()).toHaveLength(1);
+  });
+
+  it("propagates the error when the fallback retry also rejects", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "model",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create.mockRejectedValue(reasoningRejection());
+
+    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
+      "Failed to get response from LLM",
+    );
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(fallbackWarnings()).toHaveLength(1);
+  });
+
   it("does not fall back on server errors", async () => {
     const client = new LLMClient(
       "https://example.test/v1",

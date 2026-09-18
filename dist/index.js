@@ -773,12 +773,13 @@ class LLMClient {
         catch (error) {
             if (this.reasoningFallbackActive ||
                 !this.reasoningEffort ||
-                !(0, llm_retry_1.isUnsupportedReasoningEffortError)(error)) {
+                !(0, llm_retry_1.isUnsupportedReasoningEffortError)(error, this.reasoningEffort)) {
                 throw error;
             }
             this.reasoningFallbackActive = true;
             core.warning(`Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${error}). ` +
                 "Retrying once without the reasoning parameter and continuing this run without reasoning controls.");
+            await this.progress("Provider rejected reasoning controls — retrying without them…");
             return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
         }
     }
@@ -844,7 +845,7 @@ class LLMClient {
             clearStallTimer();
             if (!gotFirstChunk) {
                 // A rejected reasoning parameter is definitive, not a stalled router.
-                if ((0, llm_retry_1.isUnsupportedReasoningEffortError)(error)) {
+                if ((0, llm_retry_1.isUnsupportedReasoningEffortError)(error, this.reasoningEffort)) {
                     throw error;
                 }
                 throw (0, llm_retry_1.openRouterStallError)(firstChunkMs);
@@ -971,23 +972,31 @@ const INVALID_VALUE_PHRASES = [
     /\bnot\s+a\s+valid\b/i,
 ];
 /**
- * True only for a client validation response (400/422) that reports the reasoning/effort
- * parameter itself as unknown or unsupported — the one case where dropping the reasoning
- * parameter and retrying is safe. Invalid effort values, missing values, and generic
- * validation errors must surface normally.
+ * True only for a client validation response (400/422) that reports the reasoning
+ * configuration itself as unknown or unsupported — the one case where dropping the
+ * reasoning parameter and retrying is safe. Invalid effort values, missing values, and
+ * generic validation errors must surface normally: a rejection that repeats the configured
+ * effort value is a value complaint, not an unknown-parameter report.
  */
-function isUnsupportedReasoningEffortError(error) {
+function isUnsupportedReasoningEffortError(error, sentEffort) {
     if (!error || typeof error !== "object")
         return false;
     const status = Number(error.status);
     if (status !== 400 && status !== 422)
         return false;
     const message = errorMessage(error);
-    if (!/\b(?:reasoning|effort)/i.test(message))
+    if (!/\b(?:reasoning|effort|exclude)/i.test(message))
+        return false;
+    if (sentEffort && mentionsEffortValue(message, sentEffort))
         return false;
     if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message)))
         return false;
     return UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message));
+}
+/** Word-boundary match so short values like `low` or `max` cannot hit `follow` or `maximum`. */
+function mentionsEffortValue(message, effort) {
+    const escaped = effort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`(?:^|\\W)${escaped}(?:$|\\W)`, "i").test(message);
 }
 function isRetriableLlmError(error, context = {}) {
     if (!error)
