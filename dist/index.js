@@ -856,9 +856,10 @@ class LLMClient {
         catch (error) {
             clearStallTimer();
             if (!gotFirstChunk) {
-                // A client validation error on a request that carried reasoning is definitive, not
-                // a stalled router: surface it so performRequest can fall back or propagate it.
-                // Unrelated and non-validation failures keep the stall retry path.
+                // A 400/422 mentioning a reasoning request key is a definitive client response,
+                // not a stalled router. Surface it even when the stricter fallback classifiers
+                // reject it, so the provider's real validation error is not replaced by a stall.
+                // Other failures keep the stall retry path.
                 const status = Number(error?.status);
                 const mentionsReasoning = /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i.test((0, llm_retry_1.errorMessage)(error));
                 if (request.reasoning !== undefined &&

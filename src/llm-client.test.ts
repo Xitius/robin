@@ -498,6 +498,30 @@ describe("LLMClient reasoning fallback", () => {
     expect(fallbackWarnings()).toHaveLength(0);
   });
 
+  it("surfaces an unrelated validation error that mentions reasoning context", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "openrouter/free",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create.mockRejectedValue(
+      Object.assign(new Error("temperature must be 1 for reasoning models"), { status: 400 }),
+    );
+
+    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
+      "temperature must be 1 for reasoning models",
+    );
+    expect(create).toHaveBeenCalledTimes(1);
+    expect(fallbackWarnings()).toHaveLength(0);
+  });
+
   it("keeps the stall retry path after a fallback when a reasoning-flavored 400 arrives", async () => {
     const client = new LLMClient(
       "https://example.test/v1",

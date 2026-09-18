@@ -5,7 +5,7 @@ max-diff-size: 25000
 max-comments: 10
 json-response-mode: true
 # request-changes: true   # default; set false for advisor mode (never block the PR, even on high findings)
-# reasoning-effort: high   # provider-dependent; rejected controls/values retry once unset and leave a status warning
+# reasoning-effort: high   # provider-dependent; if rejected, Robin retries once without it and adds a status warning
 
 skip-paths:
   - "**/generated/**"
