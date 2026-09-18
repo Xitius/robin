@@ -189,6 +189,19 @@ describe("isUnsupportedReasoningEffortError", () => {
     expect(isUnsupportedReasoningEffortError(mixed, "low")).toBe(false);
   });
 
+  it("keeps a structured-param value complaint on the value path", () => {
+    expect(
+      isUnsupportedReasoningEffortError(
+        {
+          status: 400,
+          message: "Invalid value: 'extreme'. Supported values are: low, medium, high",
+          param: "reasoning_effort",
+        },
+        "extreme"
+      )
+    ).toBe(false);
+  });
+
   it("matches explicit parameter rejections with underscored and hyphenated names", () => {
     expect(
       isUnsupportedReasoningEffortError({
@@ -286,6 +299,18 @@ describe("isUnsupportedReasoningEffortError", () => {
       isUnsupportedReasoningEffortError({
         status: 400,
         message: "reasoning models do not support temperature 0.1",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "Unknown parameter: temperature; reasoning models require temperature 1",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "This model does not support temperature; reasoning models need 1",
       })
     ).toBe(false);
     expect(isUnsupportedReasoningEffortError(new Error("reasoning rejected"))).toBe(false);

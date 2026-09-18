@@ -963,16 +963,18 @@ function errorMessage(error) {
  */
 const EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES = [
     // The parameter noun must follow the adjective directly: "Unsupported value for parameter
-    // reasoning" is a value complaint, while "Unsupported parameter: reasoning" is not.
-    /\b(?:unsupported|unknown|unrecognized|unrecognised)\s+(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i,
-    /\b(?:does|do|did)\s+not\s+support\b[^.!?]{0,30}\b(?:reasoning|effort|exclude)\b/i,
+    // reasoning" is a value complaint, while "Unsupported parameter: reasoning" is not. The gap
+    // cannot cross clause punctuation, so an unrelated parameter named before a separate
+    // "reasoning" clause does not match.
+    /\b(?:unsupported|unknown|unrecognized|unrecognised)\s+(?:parameter|argument|field|property|option|input|feature)\b[^.;!?]{0,40}\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i,
+    /\b(?:does|do|did)\s+not\s+support\b[^.;!?]{0,30}\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i,
     // The parameter itself is the subject: a value echo later in the message is incidental.
     /\b(?:reasoning|effort|exclude)(?:[\w.-]*)\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
     /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b\s+(?:is|are|was|were)\s+not\s+one\s+of\s+(?:the\s+)?(?:supported|allowed|known|recognized|recognised)\s+(?:parameters?|arguments?|fields?|properties|options?|inputs?|features?)\b/i,
 ];
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */
 const UNSUPPORTED_PARAMETER_PHRASES = [
-    /(?:unsupported|unknown|unrecognized|unrecognised|unexpected)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b/i,
+    /(?:unsupported|unknown|unrecognized|unrecognised|unexpected)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b[^.;!?]{0,30}\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i,
     /\bunknown\s+name\b/i,
     /\bcannot\s+(?:bind|find)\s+(?:the\s+)?(?:field|property|parameter)\b/i,
     /(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:unsupported|unknown|unrecognized|unrecognised|unexpected)\b/i,
@@ -1017,7 +1019,9 @@ function isUnsupportedReasoningEffortError(error, sentEffort) {
     if (mentionsReasoning && SHAPE_MISMATCH_PHRASES.some((pattern) => pattern.test(message))) {
         return true;
     }
-    if (mentionsReasoning && INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) {
+    // Value complaints must win over a structured param: a param-only invalid-value message
+    // may not mention the key at all.
+    if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) {
         return false;
     }
     if (structuredReasoningParam(error))
