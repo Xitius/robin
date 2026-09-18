@@ -861,10 +861,11 @@ class LLMClient {
                 // reject it, so the provider's real validation error is not replaced by a stall.
                 // Other failures keep the stall retry path.
                 const status = Number(error?.status);
-                const mentionsReasoning = /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i.test((0, llm_retry_1.errorMessage)(error));
+                const mentionsReasoningObject = /\breasoning(?:[_-][\w.-]*)?\b/i.test((0, llm_retry_1.errorMessage)(error));
                 if (request.reasoning !== undefined &&
                     ((0, llm_retry_1.isUnsupportedReasoningEffortError)(error, request.reasoning.effort) ||
-                        ((status === 400 || status === 422) && mentionsReasoning))) {
+                        (0, llm_retry_1.isInvalidReasoningEffortError)(error, request.reasoning.effort) ||
+                        ((status === 400 || status === 422) && mentionsReasoningObject))) {
                     throw error;
                 }
                 throw (0, llm_retry_1.openRouterStallError)(firstChunkMs);
@@ -990,6 +991,7 @@ const EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES = [
     // The parameter itself is the subject: a value echo later in the message is incidental.
     /\b(?:reasoning|effort|exclude)(?:[\w.-]*)\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
     /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b\s+(?:is|are|was|were)\s+not\s+one\s+of\s+(?:the\s+)?(?:supported|allowed|known|recognized|recognised)\s+(?:parameters?|arguments?|fields?|properties|options?|inputs?|features?)\b/i,
+    /\b(?:reasoning(?:[_-]?(?:effort|exclude))?|reasoning\s+(?:controls?|parameters?|fields?)|effort|exclude)\b\s+(?:(?:is|are|was|were|has\s+been|have\s+been)\s+)?(?:rejected|refused)\b/i,
 ];
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */
 const UNSUPPORTED_PARAMETER_PHRASES = [
@@ -1183,6 +1185,7 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(7484));
 const github = __importStar(__nccwpck_require__(3228));
 const llm_client_1 = __nccwpck_require__(3316);
+const reasoning_fallback_1 = __nccwpck_require__(2432);
 const git_utils_1 = __nccwpck_require__(8529);
 const review_parser_1 = __nccwpck_require__(2141);
 const review_retry_1 = __nccwpck_require__(450);
@@ -1464,7 +1467,7 @@ async function updateStatusComment(octokit, owner, repo, commentId, body) {
     }
 }
 function buildCompletedStatusBody(command, findings, reasoningFallbackReason) {
-    const fallbackNotice = buildReasoningFallbackNotice(reasoningFallbackReason);
+    const fallbackNotice = (0, reasoning_fallback_1.buildReasoningFallbackNotice)(reasoningFallbackReason);
     if (command === "summary") {
         return [
             "## " + github_reviewer_1.ROBIN_SIGNATURE,
@@ -1489,14 +1492,6 @@ function buildCompletedStatusBody(command, findings, reasoningFallbackReason) {
         "",
         "Push fixes whenever you like, then comment `/robin` for another pass.",
     ].join("\n");
-}
-function buildReasoningFallbackNotice(reason) {
-    if (!reason)
-        return undefined;
-    const rejection = reason === "invalid-value" ? "rejected as invalid" : "rejected as unsupported";
-    return (`:warning: The configured \`reasoning-effort\` was ${rejection}. ` +
-        "Robin completed this run without a reasoning override. Update `.github/robin.yml` " +
-        "or the workflow `with: reasoning-effort` value.");
 }
 function buildSkippedFilterStatusBody(removedFiles) {
     const preview = removedFiles.slice(0, 8).join(", ");
@@ -1862,6 +1857,25 @@ function getHelpMessage() {
     ].join("\n");
 }
 //# sourceMappingURL=review-prompts.js.map
+
+/***/ }),
+
+/***/ 2432:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.buildReasoningFallbackNotice = buildReasoningFallbackNotice;
+function buildReasoningFallbackNotice(reason) {
+    if (!reason)
+        return undefined;
+    const rejection = reason === "invalid-value" ? "rejected as invalid" : "rejected as unsupported";
+    return (`:warning: The configured \`reasoning-effort\` was ${rejection}. ` +
+        "Robin completed this run without a reasoning override. Update `.github/robin.yml` " +
+        "or the workflow `with: reasoning-effort` value.");
+}
+//# sourceMappingURL=reasoning-fallback.js.map
 
 /***/ }),
 

@@ -18,6 +18,7 @@ import {
   resolveLlmTimeoutMs,
   shouldUseJsonResponseMode,
 } from "./llm-retry";
+import { ReasoningFallbackReason } from "./reasoning-fallback";
 import * as core from "@actions/core";
 
 export interface ChatCompletionResult {
@@ -26,8 +27,6 @@ export interface ChatCompletionResult {
 }
 
 export type LlmProgressHandler = (detail: string) => void | Promise<void>;
-
-export type ReasoningFallbackReason = "unsupported" | "invalid-value";
 
 type OpenRouterReasoningRequest = {
   reasoning?: { effort: string; exclude: boolean };
@@ -290,13 +289,14 @@ export class LLMClient {
         // reject it, so the provider's real validation error is not replaced by a stall.
         // Other failures keep the stall retry path.
         const status = Number((error as { status?: unknown })?.status);
-        const mentionsReasoning = /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i.test(
+        const mentionsReasoningObject = /\breasoning(?:[_-][\w.-]*)?\b/i.test(
           errorMessage(error)
         );
         if (
           request.reasoning !== undefined &&
           (isUnsupportedReasoningEffortError(error, request.reasoning.effort) ||
-            ((status === 400 || status === 422) && mentionsReasoning))
+            isInvalidReasoningEffortError(error, request.reasoning.effort) ||
+            ((status === 400 || status === 422) && mentionsReasoningObject))
         ) {
           throw error;
         }

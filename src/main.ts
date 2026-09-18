@@ -1,6 +1,10 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { LLMClient, ReasoningFallbackReason } from "./llm-client";
+import { LLMClient } from "./llm-client";
+import {
+  buildReasoningFallbackNotice,
+  ReasoningFallbackReason,
+} from "./reasoning-fallback";
 import { GitUtils } from "./git-utils";
 import { ReviewParser, StructuredReview } from "./review-parser";
 import { shouldRetryStructuredReview } from "./review-retry";
@@ -479,16 +483,6 @@ function buildCompletedStatusBody(
     "",
     "Push fixes whenever you like, then comment `/robin` for another pass.",
   ].join("\n");
-}
-
-function buildReasoningFallbackNotice(reason?: ReasoningFallbackReason): string | undefined {
-  if (!reason) return undefined;
-  const rejection = reason === "invalid-value" ? "rejected as invalid" : "rejected as unsupported";
-  return (
-    `:warning: The configured \`reasoning-effort\` was ${rejection}. ` +
-    "Robin completed this run without a reasoning override. Update `.github/robin.yml` " +
-    "or the workflow `with: reasoning-effort` value."
-  );
 }
 
 function buildSkippedFilterStatusBody(removedFiles: string[]): string {

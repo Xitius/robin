@@ -230,6 +230,15 @@ describe("isUnsupportedReasoningEffortError", () => {
     ).toBe(true);
   });
 
+  it("matches an explicit rejection of reasoning controls", () => {
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 422,
+        message: "reasoning controls rejected by the selected provider",
+      })
+    ).toBe(true);
+  });
+
   it("uses a structured param naming the reasoning field when message text is inconclusive", () => {
     expect(
       isUnsupportedReasoningEffortError({

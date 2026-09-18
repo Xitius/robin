@@ -61,6 +61,7 @@ const EXPLICIT_UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
   // The parameter itself is the subject: a value echo later in the message is incidental.
   /\b(?:reasoning|effort|exclude)(?:[\w.-]*)\s+(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
   /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b\s+(?:is|are|was|were)\s+not\s+one\s+of\s+(?:the\s+)?(?:supported|allowed|known|recognized|recognised)\s+(?:parameters?|arguments?|fields?|properties|options?|inputs?|features?)\b/i,
+  /\b(?:reasoning(?:[_-]?(?:effort|exclude))?|reasoning\s+(?:controls?|parameters?|fields?)|effort|exclude)\b\s+(?:(?:is|are|was|were|has\s+been|have\s+been)\s+)?(?:rejected|refused)\b/i,
 ];
 
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */

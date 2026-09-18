@@ -472,7 +472,7 @@ describe("LLMClient reasoning fallback", () => {
     expect(String(warnings[0][0])).not.toContain("[object Object]");
   });
 
-  it("surfaces an unrecognized reasoning rejection on the streaming router path", async () => {
+  it("falls back when reasoning controls are explicitly rejected on the streaming path", async () => {
     const client = new LLMClient(
       "https://example.test/v1",
       "test-key",
@@ -485,17 +485,24 @@ describe("LLMClient reasoning fallback", () => {
       "high",
     );
     const create = stubOpenAI(client);
-    create.mockRejectedValue(
-      Object.assign(new Error("reasoning controls rejected by the selected provider"), {
-        status: 422,
-      }),
-    );
+    create
+      .mockRejectedValueOnce(
+        Object.assign(new Error("reasoning controls rejected by the selected provider"), {
+          status: 422,
+        }),
+      )
+      .mockResolvedValueOnce(
+        streamOf([
+          { model: "vendor/model", choices: [{ delta: { content: "streamed review" } }] },
+        ]),
+      );
 
-    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
-      "reasoning controls rejected by the selected provider",
-    );
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(fallbackWarnings()).toHaveLength(0);
+    const result = await client.chatCompletion("system", "user");
+
+    expect(result.content).toBe("streamed review");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
+    expect(fallbackWarnings()).toHaveLength(1);
   });
 
   it("surfaces an unrelated validation error that mentions reasoning context", async () => {
