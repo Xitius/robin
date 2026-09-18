@@ -1,6 +1,7 @@
 import {
   computeRetryDelayMs,
   getLlmCompletionAttemptCount,
+  isInvalidReasoningEffortError,
   isOpenRouterRouterModel,
   isRetriableLlmError,
   isUnsupportedReasoningEffortError,
@@ -365,6 +366,54 @@ describe("isUnsupportedReasoningEffortError", () => {
         status: 400,
         message: "reasoning effort is required",
       })
+    ).toBe(false);
+  });
+});
+
+describe("isInvalidReasoningEffortError", () => {
+  it("detects clear reasoning-effort value rejections", () => {
+    expect(
+      isInvalidReasoningEffortError(
+        { status: 400, message: "reasoning effort must be one of low, medium, high" },
+        "extreme"
+      )
+    ).toBe(true);
+    expect(
+      isInvalidReasoningEffortError(
+        {
+          status: 422,
+          message: "Invalid value: 'extreme'. Supported values are low, medium, high",
+          param: "reasoning_effort",
+        },
+        "extreme"
+      )
+    ).toBe(true);
+    expect(
+      isInvalidReasoningEffortError(
+        { status: 400, message: "reasoning effort 'extreme' is not supported by this model" },
+        "extreme"
+      )
+    ).toBe(true);
+  });
+
+  it("does not mask unsupported parameters or unrelated failures", () => {
+    expect(
+      isInvalidReasoningEffortError(
+        { status: 400, message: "Unsupported parameter: reasoning" },
+        "high"
+      )
+    ).toBe(false);
+    expect(
+      isInvalidReasoningEffortError(
+        { status: 400, message: "Invalid temperature: only 1 is allowed" },
+        "high"
+      )
+    ).toBe(false);
+    expect(
+      isInvalidReasoningEffortError(
+        { status: 401, message: "Invalid reasoning effort" },
+        "high"
+      )
     ).toBe(false);
   });
 });

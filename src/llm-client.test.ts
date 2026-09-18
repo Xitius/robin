@@ -157,6 +157,7 @@ describe("LLMClient reasoning fallback", () => {
     });
     expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
     expect(fallbackWarnings()).toHaveLength(1);
+    expect(client.getReasoningFallbackReason()).toBe("unsupported");
   });
 
   it("keeps reasoning off for later completions after one fallback", async () => {
@@ -231,7 +232,7 @@ describe("LLMClient reasoning fallback", () => {
     expect(fallbackWarnings()).toHaveLength(0);
   });
 
-  it("does not fall back on an invalid reasoning effort value", async () => {
+  it("retries without reasoning when the configured effort is invalid", async () => {
     const client = new LLMClient(
       "https://example.test/v1",
       "test-key",
@@ -244,23 +245,27 @@ describe("LLMClient reasoning fallback", () => {
       "extreme",
     );
     const create = stubOpenAI(client);
-    create.mockRejectedValue(
-      Object.assign(new Error("reasoning effort must be one of low, medium, high"), {
-        status: 400,
-      }),
-    );
+    create
+      .mockRejectedValueOnce(
+        Object.assign(new Error("reasoning effort must be one of low, medium, high"), {
+          status: 400,
+        }),
+      )
+      .mockResolvedValueOnce(completionResponse("review text"));
 
-    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
-      "Failed to get response from LLM",
-    );
-    expect(create).toHaveBeenCalledTimes(1);
+    const result = await client.chatCompletion("system", "user");
+
+    expect(result.content).toBe("review text");
+    expect(create).toHaveBeenCalledTimes(2);
     expect(create.mock.calls[0][0]).toMatchObject({
       reasoning: { effort: "extreme", exclude: true },
     });
-    expect(fallbackWarnings()).toHaveLength(0);
+    expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
+    expect(fallbackWarnings()).toHaveLength(1);
+    expect(client.getReasoningFallbackReason()).toBe("invalid-value");
   });
 
-  it("does not fall back when the rejection repeats the configured value", async () => {
+  it("retries without reasoning when a value rejection repeats the configured value", async () => {
     const client = new LLMClient(
       "https://example.test/v1",
       "test-key",
@@ -273,15 +278,19 @@ describe("LLMClient reasoning fallback", () => {
       "extreme",
     );
     const create = stubOpenAI(client);
-    create.mockRejectedValue(
-      reasoningRejection(400, "reasoning effort 'extreme' is not supported by this model"),
-    );
+    create
+      .mockRejectedValueOnce(
+        reasoningRejection(400, "reasoning effort 'extreme' is not supported by this model"),
+      )
+      .mockResolvedValueOnce(completionResponse("review text"));
 
-    await expect(client.chatCompletion("system", "user")).rejects.toThrow(
-      "Failed to get response from LLM",
-    );
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(fallbackWarnings()).toHaveLength(0);
+    const result = await client.chatCompletion("system", "user");
+
+    expect(result.content).toBe("review text");
+    expect(create).toHaveBeenCalledTimes(2);
+    expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
+    expect(fallbackWarnings()).toHaveLength(1);
+    expect(client.getReasoningFallbackReason()).toBe("invalid-value");
   });
 
   it("falls back when the provider rejects the exclude sub-key", async () => {

@@ -293,7 +293,7 @@ Add `.github/code-reviewer.md` in your repo:
 | `OpenRouter stall` / job runs 15 min with no review | Auto-router hung — action now aborts after 45s with no stream and retries | Watch Actions log for `LLM resolved model` (routing OK); pin `@v2` or `@main` for the fix |
 | `404 Provider returned error` | Normal for `openrouter/free` when one provider is down — the action retries up to 5 times; keep `LLM_MODEL=openrouter/free` |
 | `temperature` rejected / must be a fixed value | Some models accept only one temperature (Kimi requires `1`) — set `llm-temperature` in your workflow's `with:` block, see [docs/ADVANCED.md](docs/ADVANCED.md#models-that-require-a-fixed-temperature) |
-| `reasoning` parameter rejected as unsupported | Provider/model doesn't support reasoning controls — the action warns and retries once without it. Invalid values fail normally instead. Remove `reasoning-effort` from `.github/robin.yml` or the workflow `with:` block if you don't need it |
+| `reasoning-effort` rejected as unsupported or invalid | The action warns, retries once with no reasoning override, and completes the review when that retry succeeds. Its final status comment tells you to update `reasoning-effort` in `.github/robin.yml` or the workflow `with:` block |
 
 More fixes: [docs/ADVANCED.md#troubleshooting](docs/ADVANCED.md#troubleshooting)
 

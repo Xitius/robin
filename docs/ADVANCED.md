@@ -294,16 +294,17 @@ used. This is the OpenRouter-style request shape; providers that expect a differ
 parameter (for example OpenAI-native `reasoning_effort`) reject it, and the fallback below
 then runs the review without reasoning controls.
 
-If a provider rejects the parameter itself as unknown or unsupported (a 400/422 validation
-response such as `Unsupported parameter: reasoning`), Robin logs a warning and retries that
-completion once without the `reasoning` property, then keeps running without reasoning
-controls for the rest of the run. Auth, rate-limit, server, timeout, and unrelated
-validation errors are handled by the normal retry path and never trigger this fallback, and
-an invalid configured value (for example `reasoning effort must be one of low, medium,
-high`) fails normally instead of being masked by the fallback, including rejections phrased
-as a complaint about the value itself (`reasoning effort 'extreme' is not supported`).
-Providers that do not support reasoning controls at all can therefore receive a configured
-effort harmlessly: the fallback logs the rejection and continues without it.
+If a provider rejects the parameter itself as unknown or unsupported, or clearly rejects
+the configured effort value (a 400/422 response such as `Unsupported parameter: reasoning`
+or `reasoning effort must be one of low, medium, high`), Robin logs a warning and retries
+that completion once without the `reasoning` property. It then keeps running without a
+reasoning override for the rest of the run. When the retry succeeds, the review completes
+normally and the final status comment keeps a visible warning telling the user to update
+`reasoning-effort` in `.github/robin.yml` or the workflow `with:` block.
+
+Auth, rate-limit, server, timeout, and unrelated validation errors do not trigger this
+fallback. The retry omits the optional reasoning override; it does not guess a different
+provider-specific effort value.
 
 ## Review flow
 
@@ -381,7 +382,7 @@ No daily quota from this action. Real limits:
 | `404 Provider returned error` | OpenRouter free route missed one provider | Keep `LLM_MODEL=openrouter/free` — action retries (5×) with provider fallbacks; no secret updates when models rotate |
 | `Request timed out` | Large PR or slow free model | Lower `max-diff-size` or raise `llm-timeout-ms` (router models default to 2 min per attempt) |
 | `temperature` rejected / must be 1 | Model accepts only one temperature | Set `llm-temperature` to the value the provider requires (Kimi: `1`) |
-| `reasoning` parameter rejected as unsupported | Provider/model does not support reasoning controls | The action warns and retries once without it; remove `reasoning-effort` from `.github/robin.yml` or the workflow `with:` block to avoid the fallback |
+| `reasoning-effort` rejected as unsupported or invalid | Provider/model does not accept the reasoning control or configured value | The action warns and retries once with no reasoning override. If that succeeds, the review completes and its final status comment tells you to update `.github/robin.yml` or the workflow `with:` block |
 | `Resource not accessible by integration` | Missing permissions | Add `pull-requests: write` |
 | Slash command ignored | Wrong format or permission | `/robin` or `/review` as first line; need write access |
 | `/robin` does nothing on `@v1` | Stale `v1` tag before v1.4.0 | Use `/review`, pin `@v1.4.0`+, or `@v2`; floating `v1` tracks latest `1.x` on release |

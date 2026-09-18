@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { LLMClient } from "./llm-client";
+import { LLMClient, ReasoningFallbackReason } from "./llm-client";
 import { GitUtils } from "./git-utils";
 import { ReviewParser, StructuredReview } from "./review-parser";
 import { shouldRetryStructuredReview } from "./review-retry";
@@ -308,7 +308,13 @@ async function run(): Promise<void> {
         issue_number: prNumber,
         body: ["## " + ROBIN_SIGNATURE + " · Summary", "", reviewText].join("\n"),
       });
-      await updateStatusComment(octokit, owner, repo, statusCommentId, buildCompletedStatusBody("summary"));
+      await updateStatusComment(
+        octokit,
+        owner,
+        repo,
+        statusCommentId,
+        buildCompletedStatusBody("summary", undefined, llm.getReasoningFallbackReason())
+      );
     } else {
       // Full review parsed and posted as a review
       core.info("Parsing review response...");
@@ -344,7 +350,13 @@ async function run(): Promise<void> {
 
       const reviewer = new GitHubReviewer(octokit as any, maxComments);
       await reviewer.postReview(owner, repo, prNumber, findings, requestChanges);
-      await updateStatusComment(octokit, owner, repo, statusCommentId, buildCompletedStatusBody("review", findings));
+      await updateStatusComment(
+        octokit,
+        owner,
+        repo,
+        statusCommentId,
+        buildCompletedStatusBody("review", findings, llm.getReasoningFallbackReason())
+      );
 
       if (findings.high.length > 0 && failOnHigh) {
         core.setFailed(`Found ${findings.high.length} high severity issue(s). Failing check.`);
@@ -435,12 +447,18 @@ async function updateStatusComment(
   }
 }
 
-function buildCompletedStatusBody(command: "review" | "summary", findings?: StructuredReview): string {
+function buildCompletedStatusBody(
+  command: "review" | "summary",
+  findings?: StructuredReview,
+  reasoningFallbackReason?: ReasoningFallbackReason
+): string {
+  const fallbackNotice = buildReasoningFallbackNotice(reasoningFallbackReason);
   if (command === "summary") {
     return [
       "## " + ROBIN_SIGNATURE,
       "",
       ":white_check_mark: Summary's ready above.",
+      ...(fallbackNotice ? ["", fallbackNotice] : []),
       "",
       "Want the full review? Comment `/robin`.",
     ].join("\n");
@@ -457,9 +475,20 @@ function buildCompletedStatusBody(command: "review" | "summary", findings?: Stru
     "## " + ROBIN_SIGNATURE,
     "",
     `:white_check_mark: Review done. ${result}`,
+    ...(fallbackNotice ? ["", fallbackNotice] : []),
     "",
     "Push fixes whenever you like, then comment `/robin` for another pass.",
   ].join("\n");
+}
+
+function buildReasoningFallbackNotice(reason?: ReasoningFallbackReason): string | undefined {
+  if (!reason) return undefined;
+  const rejection = reason === "invalid-value" ? "rejected as invalid" : "rejected as unsupported";
+  return (
+    `:warning: The configured \`reasoning-effort\` was ${rejection}. ` +
+    "Robin completed this run without a reasoning override. Update `.github/robin.yml` " +
+    "or the workflow `with: reasoning-effort` value."
+  );
 }
 
 function buildSkippedFilterStatusBody(removedFiles: string[]): string {

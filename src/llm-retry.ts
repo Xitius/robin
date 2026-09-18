@@ -121,6 +121,32 @@ export function isUnsupportedReasoningEffortError(error: unknown, sentEffort?: s
   return UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message));
 }
 
+/**
+ * True only when a 400/422 response clearly rejects the configured reasoning-effort
+ * value. These errors are safe to recover from by omitting the optional reasoning object,
+ * while unrelated validation failures must still surface normally.
+ */
+export function isInvalidReasoningEffortError(error: unknown, sentEffort?: string): boolean {
+  if (!error || typeof error !== "object") return false;
+  const status = Number((error as { status?: unknown }).status);
+  if (status !== 400 && status !== 422) return false;
+  if (isUnsupportedReasoningEffortError(error, sentEffort)) return false;
+
+  const message = errorMessage(error);
+  const mentionsReasoning = /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i.test(message);
+  if (!mentionsReasoning && !structuredReasoningParam(error)) return false;
+
+  if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) return true;
+
+  // Some providers describe a model-specific value rejection as "not supported" and
+  // echo the submitted value instead of listing the accepted values.
+  return Boolean(
+    sentEffort &&
+      mentionsEffortValue(message, sentEffort) &&
+      /\b(?:invalid|unsupported|not\s+(?:supported|allowed|recognized|recognised))\b/i.test(message)
+  );
+}
+
 /** Word-boundary match so short values like `low` or `max` cannot hit `follow` or `maximum`. */
 function mentionsEffortValue(message: string, effort: string): boolean {
   const escaped = effort.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

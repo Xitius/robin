@@ -684,6 +684,7 @@ class LLMClient {
     onProgress;
     reasoningEffort;
     reasoningFallbackActive = false;
+    reasoningFallbackReason;
     constructor(baseUrl, apiKey, model, maxOutputTokens, timeoutMs = config_1.DEFAULT_LLM_TIMEOUT_MS, maxAttempts = config_1.DEFAULT_LLM_COMPLETION_ATTEMPTS, temperature = config_1.DEFAULT_LLM_TEMPERATURE, onProgress, reasoningEffort) {
         this.model = model;
         this.temperature = temperature;
@@ -710,6 +711,9 @@ class LLMClient {
     }
     retryContext() {
         return { model: this.model };
+    }
+    getReasoningFallbackReason() {
+        return this.reasoningFallbackReason;
     }
     async progress(detail) {
         if (!this.onProgress)
@@ -763,23 +767,31 @@ class LLMClient {
     }
     /**
      * One completion request. If the provider rejects the reasoning parameter as
-     * unsupported, warn and retry once without it; the fallback then stays off so
-     * normal retry attempts are not multiplied.
+     * unsupported or rejects its configured value, warn and retry once without it;
+     * the fallback then stays off so normal retry attempts are not multiplied.
      */
     async performRequest(systemPrompt, userContent, jsonResponseMode) {
         try {
             return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
         }
         catch (error) {
-            if (this.reasoningFallbackActive ||
-                !this.reasoningEffort ||
-                !(0, llm_retry_1.isUnsupportedReasoningEffortError)(error, this.reasoningEffort)) {
+            if (this.reasoningFallbackActive || !this.reasoningEffort) {
                 throw error;
             }
+            const fallbackReason = (0, llm_retry_1.isUnsupportedReasoningEffortError)(error, this.reasoningEffort)
+                ? "unsupported"
+                : (0, llm_retry_1.isInvalidReasoningEffortError)(error, this.reasoningEffort)
+                    ? "invalid-value"
+                    : undefined;
+            if (!fallbackReason)
+                throw error;
             this.reasoningFallbackActive = true;
-            core.warning(`Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${(0, llm_retry_1.errorMessage)(error)}). ` +
+            this.reasoningFallbackReason = fallbackReason;
+            core.warning(`Provider rejected the configured reasoning effort as ${fallbackReason === "invalid-value" ? "invalid" : "unsupported"} (${(0, llm_retry_1.errorMessage)(error)}). ` +
                 "Retrying once without the reasoning parameter and continuing this run without reasoning controls.");
-            await this.progress("Provider rejected reasoning controls — retrying without them…");
+            await this.progress(fallbackReason === "invalid-value"
+                ? "Provider rejected the configured reasoning effort — retrying without it…"
+                : "Provider rejected reasoning controls — retrying without them…");
             return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
         }
     }
@@ -924,6 +936,7 @@ exports.isOpenRouterRouterModel = isOpenRouterRouterModel;
 exports.isOpenRouterProviderError = isOpenRouterProviderError;
 exports.errorMessage = errorMessage;
 exports.isUnsupportedReasoningEffortError = isUnsupportedReasoningEffortError;
+exports.isInvalidReasoningEffortError = isInvalidReasoningEffortError;
 exports.isRetriableLlmError = isRetriableLlmError;
 exports.shouldUseJsonResponseMode = shouldUseJsonResponseMode;
 exports.computeRetryDelayMs = computeRetryDelayMs;
@@ -1033,6 +1046,31 @@ function isUnsupportedReasoningEffortError(error, sentEffort) {
     if (!mentionsReasoning)
         return false;
     return UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message));
+}
+/**
+ * True only when a 400/422 response clearly rejects the configured reasoning-effort
+ * value. These errors are safe to recover from by omitting the optional reasoning object,
+ * while unrelated validation failures must still surface normally.
+ */
+function isInvalidReasoningEffortError(error, sentEffort) {
+    if (!error || typeof error !== "object")
+        return false;
+    const status = Number(error.status);
+    if (status !== 400 && status !== 422)
+        return false;
+    if (isUnsupportedReasoningEffortError(error, sentEffort))
+        return false;
+    const message = errorMessage(error);
+    const mentionsReasoning = /\b(?:reasoning|effort|exclude)(?:[_-][\w.-]*)?\b/i.test(message);
+    if (!mentionsReasoning && !structuredReasoningParam(error))
+        return false;
+    if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message)))
+        return true;
+    // Some providers describe a model-specific value rejection as "not supported" and
+    // echo the submitted value instead of listing the accepted values.
+    return Boolean(sentEffort &&
+        mentionsEffortValue(message, sentEffort) &&
+        /\b(?:invalid|unsupported|not\s+(?:supported|allowed|recognized|recognised))\b/i.test(message));
 }
 /** Word-boundary match so short values like `low` or `max` cannot hit `follow` or `maximum`. */
 function mentionsEffortValue(message, effort) {
@@ -1335,7 +1373,7 @@ async function run() {
                 issue_number: prNumber,
                 body: ["## " + github_reviewer_1.ROBIN_SIGNATURE + " · Summary", "", reviewText].join("\n"),
             });
-            await updateStatusComment(octokit, owner, repo, statusCommentId, buildCompletedStatusBody("summary"));
+            await updateStatusComment(octokit, owner, repo, statusCommentId, buildCompletedStatusBody("summary", undefined, llm.getReasoningFallbackReason()));
         }
         else {
             // Full review parsed and posted as a review
@@ -1352,7 +1390,7 @@ async function run() {
             core.info(`Found ${findings.high.length} high, ${findings.medium.length} medium, ${findings.low.length} low, ${findings.suggestions.length} suggestions`);
             const reviewer = new github_reviewer_1.GitHubReviewer(octokit, maxComments);
             await reviewer.postReview(owner, repo, prNumber, findings, requestChanges);
-            await updateStatusComment(octokit, owner, repo, statusCommentId, buildCompletedStatusBody("review", findings));
+            await updateStatusComment(octokit, owner, repo, statusCommentId, buildCompletedStatusBody("review", findings, llm.getReasoningFallbackReason()));
             if (findings.high.length > 0 && failOnHigh) {
                 core.setFailed(`Found ${findings.high.length} high severity issue(s). Failing check.`);
             }
@@ -1423,12 +1461,14 @@ async function updateStatusComment(octokit, owner, repo, commentId, body) {
         core.warning(`Could not update status comment: ${error}`);
     }
 }
-function buildCompletedStatusBody(command, findings) {
+function buildCompletedStatusBody(command, findings, reasoningFallbackReason) {
+    const fallbackNotice = buildReasoningFallbackNotice(reasoningFallbackReason);
     if (command === "summary") {
         return [
             "## " + github_reviewer_1.ROBIN_SIGNATURE,
             "",
             ":white_check_mark: Summary's ready above.",
+            ...(fallbackNotice ? ["", fallbackNotice] : []),
             "",
             "Want the full review? Comment `/robin`.",
         ].join("\n");
@@ -1443,9 +1483,18 @@ function buildCompletedStatusBody(command, findings) {
         "## " + github_reviewer_1.ROBIN_SIGNATURE,
         "",
         `:white_check_mark: Review done. ${result}`,
+        ...(fallbackNotice ? ["", fallbackNotice] : []),
         "",
         "Push fixes whenever you like, then comment `/robin` for another pass.",
     ].join("\n");
+}
+function buildReasoningFallbackNotice(reason) {
+    if (!reason)
+        return undefined;
+    const rejection = reason === "invalid-value" ? "rejected as invalid" : "rejected as unsupported";
+    return (`:warning: The configured \`reasoning-effort\` was ${rejection}. ` +
+        "Robin completed this run without a reasoning override. Update `.github/robin.yml` " +
+        "or the workflow `with: reasoning-effort` value.");
 }
 function buildSkippedFilterStatusBody(removedFiles) {
     const preview = removedFiles.slice(0, 8).join(", ");

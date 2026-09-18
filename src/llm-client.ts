@@ -10,6 +10,7 @@ import {
   delayMs,
   errorMessage,
   getLlmCompletionAttemptCount,
+  isInvalidReasoningEffortError,
   isOpenRouterRouterModel,
   isRetriableLlmError,
   isUnsupportedReasoningEffortError,
@@ -26,6 +27,8 @@ export interface ChatCompletionResult {
 
 export type LlmProgressHandler = (detail: string) => void | Promise<void>;
 
+export type ReasoningFallbackReason = "unsupported" | "invalid-value";
+
 type OpenRouterReasoningRequest = {
   reasoning?: { effort: string; exclude: boolean };
 };
@@ -40,6 +43,7 @@ export class LLMClient {
   private onProgress?: LlmProgressHandler;
   private reasoningEffort?: string;
   private reasoningFallbackActive = false;
+  private reasoningFallbackReason?: ReasoningFallbackReason;
 
   constructor(
     baseUrl: string,
@@ -85,6 +89,10 @@ export class LLMClient {
 
   private retryContext() {
     return { model: this.model };
+  }
+
+  getReasoningFallbackReason(): ReasoningFallbackReason | undefined {
+    return this.reasoningFallbackReason;
   }
 
   private async progress(detail: string): Promise<void> {
@@ -164,8 +172,8 @@ export class LLMClient {
 
   /**
    * One completion request. If the provider rejects the reasoning parameter as
-   * unsupported, warn and retry once without it; the fallback then stays off so
-   * normal retry attempts are not multiplied.
+   * unsupported or rejects its configured value, warn and retry once without it;
+   * the fallback then stays off so normal retry attempts are not multiplied.
    */
   private async performRequest(
     systemPrompt: string,
@@ -175,19 +183,28 @@ export class LLMClient {
     try {
       return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
     } catch (error) {
-      if (
-        this.reasoningFallbackActive ||
-        !this.reasoningEffort ||
-        !isUnsupportedReasoningEffortError(error, this.reasoningEffort)
-      ) {
+      if (this.reasoningFallbackActive || !this.reasoningEffort) {
         throw error;
       }
+
+      const fallbackReason = isUnsupportedReasoningEffortError(error, this.reasoningEffort)
+        ? "unsupported"
+        : isInvalidReasoningEffortError(error, this.reasoningEffort)
+          ? "invalid-value"
+          : undefined;
+      if (!fallbackReason) throw error;
+
       this.reasoningFallbackActive = true;
+      this.reasoningFallbackReason = fallbackReason;
       core.warning(
-        `Provider rejected reasoning effort "${this.reasoningEffort}" as unsupported (${errorMessage(error)}). ` +
+        `Provider rejected the configured reasoning effort as ${fallbackReason === "invalid-value" ? "invalid" : "unsupported"} (${errorMessage(error)}). ` +
           "Retrying once without the reasoning parameter and continuing this run without reasoning controls."
       );
-      await this.progress("Provider rejected reasoning controls — retrying without them…");
+      await this.progress(
+        fallbackReason === "invalid-value"
+          ? "Provider rejected the configured reasoning effort — retrying without it…"
+          : "Provider rejected reasoning controls — retrying without them…"
+      );
       return await this.dispatch(this.buildRequest(systemPrompt, userContent, jsonResponseMode));
     }
   }
