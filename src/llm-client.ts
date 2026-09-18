@@ -214,7 +214,7 @@ export class LLMClient {
 
   /** Stream so the first SSE chunk (model id) proves OpenRouter routed; abort if none arrives. */
   private async streamChatCompletion(
-    request: OpenAI.Chat.Completions.ChatCompletionCreateParams
+    request: OpenAI.Chat.Completions.ChatCompletionCreateParams & OpenRouterReasoningRequest
   ): Promise<ChatCompletionResult> {
     const firstChunkMs = DEFAULT_LLM_ROUTER_FIRST_CHUNK_MS;
     const controller = new AbortController();
@@ -270,9 +270,8 @@ export class LLMClient {
         // A rejected reasoning parameter is definitive, not a stalled router — but only
         // when this request actually carried one; otherwise keep the stall retry path.
         if (
-          this.reasoningEffort &&
-          !this.reasoningFallbackActive &&
-          isUnsupportedReasoningEffortError(error, this.reasoningEffort)
+          request.reasoning !== undefined &&
+          isUnsupportedReasoningEffortError(error, request.reasoning.effort)
         ) {
           throw error;
         }

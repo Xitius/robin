@@ -433,4 +433,34 @@ describe("LLMClient reasoning fallback", () => {
     expect(create.mock.calls[1][0]).not.toHaveProperty("reasoning");
     expect(fallbackWarnings()).toHaveLength(1);
   });
+
+  it("keeps the stall retry path after a fallback when a reasoning-flavored 400 arrives", async () => {
+    const client = new LLMClient(
+      "https://example.test/v1",
+      "test-key",
+      "openrouter/free",
+      undefined,
+      undefined,
+      1,
+      undefined,
+      undefined,
+      "high",
+    );
+    const create = stubOpenAI(client);
+    create
+      .mockRejectedValueOnce(reasoningRejection(422, "reasoning_effort is not supported"))
+      .mockResolvedValueOnce(
+        streamOf([
+          { model: "vendor/model", choices: [{ delta: { content: "first review" } }] },
+        ]),
+      )
+      .mockRejectedValueOnce(reasoningRejection());
+
+    await client.chatCompletion("system", "user");
+    await expect(client.chatCompletion("system", "user")).rejects.toThrow("OpenRouter stall");
+
+    expect(create).toHaveBeenCalledTimes(3);
+    expect(create.mock.calls[2][0]).not.toHaveProperty("reasoning");
+    expect(fallbackWarnings()).toHaveLength(1);
+  });
 });

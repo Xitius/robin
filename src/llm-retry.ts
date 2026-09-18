@@ -47,12 +47,19 @@ function errorMessage(error: unknown): string {
 /** Provider phrases meaning the extra parameter itself is unknown, not that its value is bad. */
 const UNSUPPORTED_PARAMETER_PHRASES: RegExp[] = [
   /(?:unsupported|unknown|unrecognized|unrecognised|unexpected)(?:\s+\w+){0,2}\s+(?:parameter|argument|field|property|option|input|feature)\b/i,
+  /\bunknown\s+name\b/i,
+  /\bcannot\s+(?:bind|find)\s+(?:the\s+)?(?:field|property|parameter)\b/i,
   /(?:parameter|argument|field|property|option|input|feature)\b[^.!?]{0,40}\b(?:unsupported|unknown|unrecognized|unrecognised|unexpected)\b/i,
   /\b(?:is|are|was|were)\s+(?:not\s+supported|unsupported)\b/i,
   /\bnot\s+supported\s+(?:by|for|with|in|on)\b/i,
   /\b(?:does|do|did)\s+not\s+support\b/i,
   /\b(?:parameter|argument|field|property|option|feature)\b[^.!?]{0,30}\b(?:is|are|was|were)\s+not\s+(?:allowed|permitted|recognized|recognised)\b/i,
   /\bextra\s+(?:inputs?|fields?|properties|arguments?|parameters?)\b/i,
+];
+
+/** Schema/shape complaints about the reasoning field itself, not about its configured value. */
+const SHAPE_MISMATCH_PHRASES: RegExp[] = [
+  /\binput should be (?:a|an)\s+(?:valid\s+)?(?:string|object|boolean|number|array)\b/i,
 ];
 
 /** Malformed-value signals: these must keep failing rather than mask a configuration typo. */
@@ -67,10 +74,10 @@ const INVALID_VALUE_PHRASES: RegExp[] = [
 
 /**
  * True only for a client validation response (400/422) that reports the reasoning
- * configuration itself as unknown or unsupported — the one case where dropping the
- * reasoning parameter and retrying is safe. Invalid effort values, missing values, and
- * generic validation errors must surface normally: a rejection that repeats the configured
- * effort value is a value complaint, not an unknown-parameter report.
+ * configuration itself as unknown, unsupported, or of the wrong shape — the cases where
+ * dropping the reasoning parameter and retrying is safe. Invalid effort values, missing
+ * values, and generic validation errors must surface normally: a rejection that repeats the
+ * configured effort value is a value complaint, not an unknown-parameter report.
  */
 export function isUnsupportedReasoningEffortError(error: unknown, sentEffort?: string): boolean {
   if (!error || typeof error !== "object") return false;
@@ -79,6 +86,7 @@ export function isUnsupportedReasoningEffortError(error: unknown, sentEffort?: s
   const message = errorMessage(error);
   if (!/\b(?:reasoning|effort|exclude)/i.test(message)) return false;
   if (sentEffort && mentionsEffortValue(message, sentEffort)) return false;
+  if (SHAPE_MISMATCH_PHRASES.some((pattern) => pattern.test(message))) return true;
   if (INVALID_VALUE_PHRASES.some((pattern) => pattern.test(message))) return false;
   return UNSUPPORTED_PARAMETER_PHRASES.some((pattern) => pattern.test(message));
 }

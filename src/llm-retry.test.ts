@@ -117,6 +117,25 @@ describe("isUnsupportedReasoningEffortError", () => {
         message: "reasoning: Extra inputs are not permitted",
       })
     ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: 'Unknown name "reasoning": Cannot bind field.',
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message:
+          "Invalid JSON payload received. Unknown name \"reasoning\" at 'reasoning': Cannot find field.",
+      })
+    ).toBe(true);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 422,
+        message: "reasoning: Input should be a valid string",
+      })
+    ).toBe(true);
   });
 
   it("treats a message repeating the configured effort value as a value complaint", () => {
@@ -170,6 +189,12 @@ describe("isUnsupportedReasoningEffortError", () => {
       isUnsupportedReasoningEffortError({
         status: 400,
         message: "reasoning effort must be one of low, medium, high",
+      })
+    ).toBe(false);
+    expect(
+      isUnsupportedReasoningEffortError({
+        status: 400,
+        message: "reasoning effort should be one of low, medium, high",
       })
     ).toBe(false);
     expect(
